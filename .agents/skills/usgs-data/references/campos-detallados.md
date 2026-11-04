@@ -53,3 +53,4 @@
 | Significativos, día     | `summary/significant_day.geojson`| ~1 min       |
 
 Para el proyecto usamos `all_day.geojson` que incluye TODOS los tipos y magnitudes.
+

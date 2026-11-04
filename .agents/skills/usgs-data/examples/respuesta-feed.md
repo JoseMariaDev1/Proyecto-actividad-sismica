@@ -101,3 +101,4 @@ Este archivo muestra la estructura real de una respuesta del endpoint
 3. `bbox` = bounding box de todos los eventos: [minLon, minLat, minDepth, maxLon, maxLat, maxDepth].
 4. Cada `feature.id` es el identificador único global del evento.
 5. `properties.status` puede ser `"automatic"` (sin revisión humana) o `"reviewed"`.
+

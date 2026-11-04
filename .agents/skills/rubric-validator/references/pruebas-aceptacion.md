@@ -15,3 +15,4 @@ Cada una de estas pruebas debe ser demostrable durante la defensa y verificada a
 | **P9** | **Cerrar el túnel ngrok** | Detener el agente/túnel de ngrok | El panel Angular muestra aviso de desconexión y mantiene última lectura | UI muestra estado de error/alerta sin romper la aplicación SPA |
 | **P10** | **Volver a abrir el túnel** | Reiniciar el túnel ngrok | Las consultas se recuperan automáticamente en el siguiente intervalo | El panel vuelve a verde/conectado en el refresco automático de 60s |
 | **P11** | **Reproducción histórica (`replay`)** | Ejecutar script de replay histórico acelerado | Se procesa por Kafka con `mode: "replay"` sin alterar la pureza del feed en vivo | Eventos etiquetados claramente como `replay`, visibles en la interfaz |
+

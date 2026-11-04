@@ -231,3 +231,4 @@ curl -s "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojs
 
 Debe devolver un `FeatureCollection` con `metadata.count` indicando el número
 de eventos y un array `features` con los terremotos.
+

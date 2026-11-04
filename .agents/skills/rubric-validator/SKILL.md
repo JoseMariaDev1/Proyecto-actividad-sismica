@@ -86,3 +86,4 @@ Verificar periódicamente ejecutando:
 ```powershell
 python scripts/probar_aceptacion.py
 ```
+

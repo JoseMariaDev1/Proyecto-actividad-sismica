@@ -52,3 +52,4 @@ Directrices de evaluación:
 ## 💡 Cómo invocar a este subagente
 
 Cuando quieras una revisión de tu proyecto, puedes pedirle al asistente principal que invoque a `professor-evaluator`. El evaluador revisará los archivos actuales y emitirá su boletín de calificaciones con recomendaciones.
+

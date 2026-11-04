@@ -71,3 +71,4 @@ Cuando se te asigne una tarea, diseña el DDL estructurado, limpio, comentado en
 - [`sql/02_seed_paises.py`](file:///C:/Users/pacol/Desktop/Proyecto 1trimestre/Proyecto-actividad-sismica/sql/02_seed_paises.py): Script en Python para extraer los 177 países de Natural Earth.
 - [`sql/02_seed_paises.sql`](file:///C:/Users/pacol/Desktop/Proyecto 1trimestre/Proyecto-actividad-sismica/sql/02_seed_paises.sql): Sentencias SQL de inserción masiva idempotente para los 177 países.
 - [`sql/README.md`](file:///C:/Users/pacol/Desktop/Proyecto 1trimestre/Proyecto-actividad-sismica/sql/README.md): Memoria técnica con diagramas conceptuales, lógicos y físicos.
+

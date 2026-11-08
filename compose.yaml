@@ -101,6 +101,8 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+    volumes:
+      - ./data:/app/data
     networks:
       - sismos-net
 
@@ -141,3 +143,4 @@ networks:
 volumes:
   postgres_data:
     driver: local
+

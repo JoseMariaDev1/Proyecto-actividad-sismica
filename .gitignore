@@ -12,6 +12,7 @@ build/
 
 # Datos grandes (se descargan con script)
 data/historico_2025.geojson
+data/estado_productor*.json
 
 # Entorno
 .env

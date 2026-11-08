@@ -158,6 +158,19 @@ class ProducerConfig(BaseModel):
     max_state_entries: int = 25000
 
 
+class ConsumerConfig(BaseModel):
+    """
+    Configuración específica de persistencia, geoprocesamiento y ejecución del Consumidor.
+    """
+    countries_geojson: Path = Field(
+        default_factory=lambda: Path(
+            os.getenv("COUNTRIES_GEOJSON_PATH", str(PROJECT_ROOT / "frontend" / "public" / "datos" / "paises.geojson"))
+        )
+    )
+    batch_size: int = Field(default=50)
+    poll_timeout_ms: int = Field(default=1000)
+
+
 class Settings(BaseModel):
     """
     Contenedor principal de configuración unificada del sistema.
@@ -167,6 +180,7 @@ class Settings(BaseModel):
     usgs: USGSConfig = Field(default_factory=USGSConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
     producer: ProducerConfig = Field(default_factory=ProducerConfig)
+    consumer: ConsumerConfig = Field(default_factory=ConsumerConfig)
     project_root: Path = PROJECT_ROOT
 
 

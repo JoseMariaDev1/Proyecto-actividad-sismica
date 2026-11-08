@@ -158,3 +158,4 @@ Cada servicio en Docker Compose reutiliza esta misma imagen cambiando el comando
    ```bash
    docker compose down -v
    ```
+

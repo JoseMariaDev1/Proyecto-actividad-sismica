@@ -124,3 +124,4 @@ class SpatialMatcher:
                 
         return None  # Marítimo / Sin país asignado
 ```
+

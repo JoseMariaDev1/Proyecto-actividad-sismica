@@ -25,3 +25,4 @@ ENV PYTHONUNBUFFERED=1
 
 # Comando por defecto (sobrescrito en cada servicio de compose.yaml)
 CMD ["python", "--version"]
+

@@ -28,3 +28,4 @@ volumes:
     driver: local
 ```
 Los datos de la base de datos se almacenan en el host gestionados por Docker. Aunque se reinicien o actualicen los contenedores (`docker compose restart` o `docker compose up --build`), los sismos persistidos y el histórico se mantienen intactos.
+

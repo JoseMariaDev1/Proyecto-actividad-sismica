@@ -61,3 +61,4 @@ Responsabilidades técnicas:
 
 Asegura código limpio, estructurado, fuertemente tipado, con docstrings explicativos y logs estructurados en español.
 ```
+

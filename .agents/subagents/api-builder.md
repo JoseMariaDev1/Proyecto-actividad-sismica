@@ -61,3 +61,4 @@ Responsabilidades técnicas:
 
 Asegura código limpio, fuertemente tipado con Pydantic, con manejo robusto de excepciones HTTP y logs estructurados en español.
 ```
+

@@ -1,0 +1,22 @@
+# Dependencias del proyecto Observatorio de Actividad Sísmica
+# Versiones fijadas para reproducibilidad estricta
+
+# Streaming con Kafka
+aiokafka==0.12.0
+
+# API REST
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+
+# Base de datos PostgreSQL
+psycopg[binary,pool]==3.2.4
+
+# Procesamiento geoespacial (Point-in-Polygon con STRtree)
+shapely==2.0.7
+
+# Cliente HTTP asíncrono para USGS
+httpx==0.28.1
+
+# Utilidades y configuración
+python-dotenv==1.0.1

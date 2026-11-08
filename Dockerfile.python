@@ -1,0 +1,27 @@
+# Imagen base compartida y reproducible para los tres servicios Python:
+# producer, consumer y api.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Instalar dependencias esenciales de compilación y librerías C
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    libgeos-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar e instalar dependencias Python con caché optimizado
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar el código fuente del backend y los datos necesarios
+COPY backend/ ./backend/
+COPY sql/ ./sql/
+COPY frontend/public/datos/paises.geojson ./frontend/public/datos/paises.geojson
+
+# Salida sin buffer para ver logs inmediatamente en docker compose logs
+ENV PYTHONUNBUFFERED=1
+
+# Comando por defecto (sobrescrito en cada servicio de compose.yaml)
+CMD ["python", "--version"]

@@ -1,0 +1,143 @@
+services:
+  # ============================================================================
+  # 1. PostgreSQL 16: Almacenamiento relacional, histórico y dimensiones
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: sismos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sismos}
+      POSTGRES_USER: ${POSTGRES_USER:-sismo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sismo_secreto}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - sismos-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sismo} -d ${POSTGRES_DB:-sismos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ============================================================================
+  # 2. Apache Kafka 3.8: Broker KRaft (sin ZooKeeper)
+  # ============================================================================
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: sismos-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_RETENTION_HOURS: 48
+    ports:
+      - "9092:9092"
+    networks:
+      - sismos-net
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-cluster.sh cluster-id --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ============================================================================
+  # 3. Consumidor Python: Validación, enriquecimiento espacial y persistencia
+  # ============================================================================
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: sismos-consumer
+    restart: unless-stopped
+    command: ["python", "-m", "backend.consumer.consumer"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sismos}
+      POSTGRES_USER: ${POSTGRES_USER:-sismo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sismo_secreto}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-terremotos}
+      KAFKA_TOPIC_REPLAY: ${KAFKA_TOPIC_REPLAY:-terremotos-replay}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-observatorio-consumidor}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - sismos-net
+
+  # ============================================================================
+  # 4. Productor Python: Extractor periódico de USGS y publicador Kafka
+  # ============================================================================
+  producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: sismos-producer
+    restart: unless-stopped
+    command: ["python", "-m", "backend.producer.producer"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-terremotos}
+      USGS_FEED_URL: ${USGS_FEED_URL:-https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson}
+      USGS_POLL_INTERVAL_SECONDS: ${USGS_POLL_INTERVAL_SECONDS:-60}
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - sismos-net
+
+  # ============================================================================
+  # 5. API REST FastAPI: Servicio de consulta para Frontend y túnel ngrok
+  # ============================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: sismos-api
+    restart: unless-stopped
+    command: ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sismos}
+      POSTGRES_USER: ${POSTGRES_USER:-sismo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sismo_secreto}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,https://*.netlify.app}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sismos-net
+
+# ==============================================================================
+# Redes y Volúmenes
+# ==============================================================================
+networks:
+  sismos-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

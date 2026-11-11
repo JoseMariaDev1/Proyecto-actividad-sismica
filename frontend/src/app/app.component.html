@@ -1,335 +1,486 @@
-<main class="observatorio-container">
-  <!-- ENCABEZADO Y ESTADO DEL SISTEMA -->
-  <header class="main-header">
-    <div class="header-content">
-      <span class="eyebrow">SISTEMAS DE BIG DATA · RA1 · OBSERVATORIO SÍSMICO</span>
-      <h1>Observatorio de Actividad Sísmica Global</h1>
-      <p class="subtitle">
-        Extracción continua USGS, transporte Kafka, enriquecimiento geoespacial y comparativa histórica anual.
-      </p>
-    </div>
+<div class="app-layout">
+  <!-- ===================================================================== -->
+  <!-- COLUMNA IZQUIERDA: PLANETA TIERRA EN 3D (INTERACTIVO Y GIRATORIO)     -->
+  <!-- ===================================================================== -->
+  <main class="globe-section" aria-label="Visualización 3D del Planeta Tierra y Sismicidad">
+    <app-globe
+      [events]="filteredEvents()"
+      [selectedEventId]="selectedEarthquake()?.id ?? null"
+      [countriesGeoJson]="countriesGeoJson()"
+      (eventSelected)="onGlobeEventSelect($event)"
+      (eventHovered)="onGlobeEventHover($event)">
+    </app-globe>
+  </main>
 
-    <!-- Barra de Estado del Backend y Modo Operativo -->
-    <div class="system-status-card" [class.status-fresh]="isFresh()" [class.status-stale]="!isFresh()">
-      <div class="status-top">
-        <span class="status-indicator"></span>
-        <strong>{{ mode() }}</strong>
-        <span class="status-text">{{ status() }}</span>
-      </div>
-      <div class="status-meta">
-        <div><strong>Última ingesta USGS:</strong> {{ lastIngestion() }}</div>
-        <div><strong>Catálogo:</strong> {{ countriesStatus() }}</div>
-        <div><strong>Lectura frontend:</strong> {{ lastRead() }}</div>
-      </div>
-
-      <!-- Selector de Modo: Live vs Reproducción Histórica -->
-      <div class="mode-switcher">
-        <button 
-          type="button" 
-          class="mode-btn" 
-          [class.active]="activeMode() === 'live'"
-          (click)="setMode('live')">
-          🟢 Tiempo Real (Live)
-        </button>
-        <button 
-          type="button" 
-          class="mode-btn" 
-          [class.active]="activeMode() === 'replay'"
-          (click)="setMode('replay')">
-          🟣 Reproducción Histórica
-        </button>
-      </div>
-
-      @if (activeMode() === 'replay') {
-        <div class="replay-badge">
-          ⚠️ <strong>MODO REPRODUCCIÓN HISTÓRICA ACTIVO:</strong> Visualizando flujo simulado a través de Kafka sin mezclar con datos reales en vivo.
-        </div>
-      }
-    </div>
-  </header>
-
-  <!-- PANEL DE FILTROS INTERACTIVOS -->
-  <section class="filters-panel" aria-label="Filtros analíticos">
-    <div class="filter-group">
-      <label for="filter-mag">Magnitud Mínima:</label>
-      <select id="filter-mag" (change)="onMinMagChange($event)">
-        <option value="">Todas las magnitudes</option>
-        <option value="3.0">≥ 3.0 (Moderado bajo)</option>
-        <option value="4.0">≥ 4.0 (Sensible / Histórico comparable)</option>
-        <option value="5.0">≥ 5.0 (Fuerte)</option>
-        <option value="6.0">≥ 6.0 (Grave)</option>
-      </select>
-    </div>
-
-    <div class="filter-group">
-      <label for="filter-country">País o Región:</label>
-      <select id="filter-country" (change)="onCountryChange($event)">
-        <option value="">Todos los países y territorios</option>
-        <option value="sin_pais">🌊 Sin país asignado (Sismos marítimos / oceánicos)</option>
-        @for (c of countriesList(); track c.id) {
-          <option [value]="c.id">{{ c.name }} ({{ c.id }})</option>
-        }
-      </select>
-    </div>
-
-    <div class="filter-group">
-      <label for="filter-start">Fecha Inicio (UTC):</label>
-      <input type="datetime-local" id="filter-start" (change)="onDateStartChange($event)" />
-    </div>
-
-    <div class="filter-group">
-      <label for="filter-end">Fecha Fin (UTC):</label>
-      <input type="datetime-local" id="filter-end" (change)="onDateEndChange($event)" />
-    </div>
-
-    <div class="filter-actions">
-      <button type="button" class="btn-reset" (click)="resetFilters()">Restablecer Filtros</button>
-    </div>
-  </section>
-
-  <!-- TARJETAS RESUMEN KPI Y COMPARATIVA HISTÓRICA -->
-  <section class="kpi-grid" aria-label="Resumen analítico y métricas clave">
-    <div class="kpi-card">
-      <span class="kpi-label">Terremotos en Vista</span>
-      <span class="kpi-value">{{ kpiTotal() }}</span>
-      <span class="kpi-subtext">{{ omitted() }} omitidos por coordenadas inválidas</span>
-    </div>
-
-    <div class="kpi-card highlight-card">
-      <span class="kpi-label">Comparativa Histórica 2025 (M ≥ 4.0)</span>
-      <div class="kpi-comparison">
-        <strong>{{ histComparison().recuento_ultimas_24h_mag4 }}</strong> sismos recientes
-        <span class="kpi-vs">frente a</span>
-        <strong>{{ histComparison().media_diaria_2025 }}</strong> media diaria 2025
-      </div>
-      <div class="kpi-ratio">
-        Ratio reciente/histórico: 
-        <strong>{{ histComparison().ratio_reciente_vs_historico ?? 'N/D' }}x</strong>
-      </div>
-      <small class="kpi-footnote">{{ histComparison().nota }}</small>
-    </div>
-
-    <div class="kpi-card">
-      <span class="kpi-label">Rango de Magnitud</span>
-      <div class="kpi-value-dual">
-        <span>Máx: <strong>{{ kpiMaxMag() }}</strong></span>
-        <span>Mín: <strong>{{ kpiMinMag() }}</strong></span>
-      </div>
-      <span class="kpi-subtext">{{ kpiNullMagCount() }} eventos con magnitud ND</span>
-    </div>
-
-    <div class="kpi-card">
-      <span class="kpi-label">Sismos Marítimos</span>
-      <span class="kpi-value">{{ kpiMaritimeCount() }}</span>
-      <span class="kpi-subtext">Sin país asignado (Dorsales / Costas)</span>
-    </div>
-
-    <div class="kpi-card">
-      <span class="kpi-label">Profundidad Media</span>
-      <span class="kpi-value">{{ kpiAverageDepth() }}</span>
-      <span class="kpi-subtext">Hipocentros analizados</span>
-    </div>
-  </section>
-
-  <!-- CONTENEDOR PRINCIPAL: MAPA Y GRÁFICOS -->
-  <section class="map-and-charts">
-    <!-- MAPA LEAFLET -->
-    <div class="map-container">
-      <div class="map-header">
-        <h2>Mapa Cartográfico de Sismicidad</h2>
-        <span class="badge">{{ filteredEvents().length }} puntos representados</span>
-      </div>
-      <div class="map" leaflet [leafletOptions]="options" (leafletMapReady)="onMapReady($event)" aria-label="Mapa interactivo de terremotos"></div>
-      
-      <!-- LEYENDA DEL MAPA -->
-      <div class="map-legend">
-        <strong>Estratos de Profundidad:</strong>
-        <span class="legend-item"><span class="dot superficial"></span> Superficial (&lt;70 km)</span>
-        <span class="legend-item"><span class="dot intermedio"></span> Intermedio (70–299 km)</span>
-        <span class="legend-item"><span class="dot profundo"></span> Profundo (≥300 km)</span>
-        <span class="legend-item"><span class="dot nd"></span> Sin profundidad (ND)</span>
-        <p class="legend-note">
-          Radio proporcional a la magnitud sísmica. Círculos mínimos representan eventos con magnitud no disponible (ND).
+  <!-- ===================================================================== -->
+  <!-- COLUMNA DERECHA: MENÚ Y PANEL DE CONTROL CON LOS DATOS PERTINENTES    -->
+  <!-- ===================================================================== -->
+  <aside class="sidebar-section" aria-label="Menú analítico y datos pertinentes">
+    <!-- 1. ENCABEZADO Y ESTADO DEL SISTEMA -->
+    <header class="sidebar-header">
+      <div class="header-titles">
+        <span class="badge-eyebrow">SISTEMAS DE BIG DATA · OBSERVATORIO SÍSMICO</span>
+        <h1>Monitor Geofísico Global</h1>
+        <p class="header-desc">
+          Ingesta continua USGS, transporte Kafka, enriquecimiento STRtree y comparativa 2025.
         </p>
       </div>
-    </div>
 
-    <!-- PANELES DE ANÁLISIS Y GRÁFICOS -->
-    <div class="charts-container">
-      <!-- Gráfico 1: Estratos de Profundidad -->
-      <div class="chart-box">
-        <h3>Distribución por Profundidad</h3>
-        <div class="bars-vertical">
-          @for (b of depthDistribution(); track b.label) {
-            <div class="bar-row">
-              <span class="bar-label">{{ b.label }}</span>
-              <div class="bar-track">
-                <div class="bar-fill" [style.width.%]="b.barWidth" [style.background-color]="b.color"></div>
-              </div>
-              <span class="bar-val">{{ b.count }} ({{ b.pct }}%)</span>
-            </div>
-          }
-        </div>
-      </div>
-
-      <!-- Gráfico 2: Rangos de Magnitud -->
-      <div class="chart-box">
-        <h3>Distribución por Magnitud</h3>
-        <div class="bars-vertical">
-          @for (b of magDistribution(); track b.label) {
-            <div class="bar-row">
-              <span class="bar-label">M {{ b.label }}</span>
-              <div class="bar-track">
-                <div class="bar-fill mag-bar" [style.width.%]="b.barWidth"></div>
-              </div>
-              <span class="bar-val">{{ b.count }} ({{ b.pct }}%)</span>
-            </div>
-          }
-        </div>
-      </div>
-
-      <!-- Gráfico 3: Serie Temporal (1 hora UTC) -->
-      <div class="chart-box">
-        <h3>Frecuencia Temporal (Ventanas de 1h UTC)</h3>
-        @if (hourlyDistribution().length > 0) {
-          <div class="timeline-histogram">
-            @for (h of hourlyDistribution(); track h.hour) {
-              <div class="timeline-bar-wrap" [title]="h.hour + ': ' + h.count + ' sismos'">
-                <div class="timeline-bar" [style.height.px]="h.barHeight"></div>
-                <span class="timeline-label">{{ h.hour }}</span>
-              </div>
-            }
+      <!-- Barra de Estado del Backend y Selector de Modo Live / Replay -->
+      <div class="system-status-box" [class.status-fresh]="isFresh()" [class.status-stale]="!isFresh()">
+        <div class="status-top">
+          <div class="status-indicator-wrap">
+            <span class="status-dot"></span>
+            <strong>{{ mode() }}</strong>
           </div>
-        } @else {
-          <p class="empty-hint">Sin datos temporales en el intervalo seleccionado.</p>
+          <span class="status-tag">{{ status() }}</span>
+        </div>
+
+        <div class="status-meta">
+          <div class="meta-item">
+            <span class="meta-label">Ingesta USGS:</span>
+            <span class="meta-val">{{ lastIngestion() }}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Catálogo Político:</span>
+            <span class="meta-val">{{ countriesStatus() }}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Última lectura:</span>
+            <span class="meta-val">{{ lastRead() }}</span>
+          </div>
+        </div>
+
+        <!-- Selector de Modo de Ingesta -->
+        <div class="mode-switcher">
+          <button 
+            type="button" 
+            class="mode-btn" 
+            [class.active]="activeMode() === 'live'"
+            (click)="setMode('live')">
+            🟢 En Vivo (Live)
+          </button>
+          <button 
+            type="button" 
+            class="mode-btn" 
+            [class.active]="activeMode() === 'replay'"
+            (click)="setMode('replay')">
+            🟣 Replay Histórico
+          </button>
+        </div>
+
+        @if (activeMode() === 'replay') {
+          <div class="replay-warning">
+            ⚠️ <strong>Modo Reproducción Activo:</strong> Consumiendo tópico simulado en Kafka.
+          </div>
         }
       </div>
+    </header>
 
-      <!-- Gráfico 4: Top Países Afectados -->
-      <div class="chart-box">
-        <h3>Top Zonas / Países con Mayor Actividad</h3>
-        <div class="bars-vertical">
-          @for (c of topCountries(); track c.name) {
-            <div class="bar-row">
-              <span class="bar-label">{{ c.name }}</span>
-              <div class="bar-track">
-                <div class="bar-fill country-bar" [style.width.%]="c.barWidth"></div>
-              </div>
-              <span class="bar-val">{{ c.count }}</span>
-            </div>
-          }
+    <!-- 2. PANEL DE FILTROS INTERACTIVOS -->
+    <section class="filters-card" aria-label="Filtros analíticos">
+      <div class="filters-header">
+        <h2>Filtros Analíticos</h2>
+        <button type="button" class="btn-clear-filters" (click)="resetFilters()">
+          Restablecer
+        </button>
+      </div>
+
+      <div class="filters-grid">
+        <div class="filter-field">
+          <label for="filter-mag">Magnitud Mínima</label>
+          <select id="filter-mag" (change)="onMinMagChange($event)">
+            <option value="">Todas las magnitudes</option>
+            <option value="3.0">≥ 3.0 (Moderado bajo)</option>
+            <option value="4.0">≥ 4.0 (Sensible / 2025 comparable)</option>
+            <option value="5.0">≥ 5.0 (Fuerte)</option>
+            <option value="6.0">≥ 6.0 (Grave)</option>
+          </select>
+        </div>
+
+        <div class="filter-field">
+          <label for="filter-country">País o Región</label>
+          <select id="filter-country" (change)="onCountryChange($event)">
+            <option value="">Todos los países y territorios</option>
+            <option value="sin_pais">🌊 Sin país asignado (Oceánicos / Dorsales)</option>
+            @for (c of countriesList(); track c.id) {
+              <option [value]="c.id">{{ c.name }} ({{ c.id }})</option>
+            }
+          </select>
+        </div>
+
+        <div class="filter-field">
+          <label for="filter-start">Fecha Inicio (UTC)</label>
+          <input type="datetime-local" id="filter-start" (change)="onDateStartChange($event)" />
+        </div>
+
+        <div class="filter-field">
+          <label for="filter-end">Fecha Fin (UTC)</label>
+          <input type="datetime-local" id="filter-end" (change)="onDateEndChange($event)" />
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- TABLA CONSULTABLE ACCESIBLE DE EVENTOS -->
-  <section class="table-section" aria-label="Tabla accesible de eventos">
-    <div class="table-header">
-      <div>
-        <h2>Registro Consultable de Eventos Sísmicos</h2>
-        <p>Alternativa accesible a la representación cartográfica y por color.</p>
-      </div>
-      <div class="table-search">
-        <input 
-          type="text" 
-          placeholder="Buscar por lugar, país o identificador..." 
-          (input)="onSearch($event)" />
-      </div>
-    </div>
+    <!-- 3. TARJETA DE EVENTO SELECCIONADO (Si hay uno activo) -->
+    @if (selectedEarthquake(); as selected) {
+      <section class="selected-card" aria-label="Detalle del sismo seleccionado">
+        <div class="selected-header">
+          <span class="selected-badge">Sismo Seleccionado</span>
+          <button type="button" class="btn-close-selected" (click)="clearSelectedEvent()" title="Deseleccionar">
+            ✕
+          </button>
+        </div>
 
-    <div class="table-responsive">
-      <table class="events-table">
-        <thead>
-          <tr>
-            <th (click)="setSort('time')" class="sortable">Fecha y Hora (UTC)</th>
-            <th (click)="setSort('mag')" class="sortable">Magnitud</th>
-            <th (click)="setSort('depth')" class="sortable">Profundidad</th>
-            <th (click)="setSort('place')" class="sortable">Lugar Descriptivo</th>
-            <th (click)="setSort('country')" class="sortable">País Asignado</th>
-            <th>ID Evento</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (ev of paginatedEvents(); track ev.id) {
-            <tr>
-              <td>{{ formatDate(ev.properties.time) }}</td>
-              <td>
-                @if (ev.properties.mag !== null) {
-                  <span class="mag-badge" [class.mag-high]="ev.properties.mag >= 5.0">
-                    M {{ ev.properties.mag.toFixed(1) }}
-                    @if (ev.properties.magType) {
-                      <small>({{ ev.properties.magType }})</small>
-                    }
-                  </span>
-                } @else {
-                  <span class="badge-nd">ND</span>
+        <div class="selected-body">
+          <div class="selected-main">
+            <span 
+              class="selected-mag-badge"
+              [class.mag-high]="(selected.properties.mag ?? 0) >= 5.0"
+              [class.mag-mid]="(selected.properties.mag ?? 0) >= 4.0 && (selected.properties.mag ?? 0) < 5.0">
+              M {{ selected.properties.mag !== null ? selected.properties.mag.toFixed(1) : 'ND' }}
+              @if (selected.properties.magType) {
+                <small>({{ selected.properties.magType }})</small>
+              }
+            </span>
+            <div class="selected-place-block">
+              <h3>{{ selected.properties.place || 'Epicentro sin descripción' }}</h3>
+              <span class="selected-country" [class.maritime]="!selected.properties.country_id">
+                {{ selected.properties.country_name || '🌊 Sismo Oceánico (Sin país asignado)' }}
+                @if (selected.properties.country_id) {
+                  <small>({{ selected.properties.country_id }})</small>
                 }
-              </td>
-              <td>
-                @if (ev.geometry.coordinates[2] !== null) {
-                  <span>{{ ev.geometry.coordinates[2]!.toFixed(1) }} km</span>
-                } @else {
-                  <span class="badge-nd">ND</span>
-                }
-              </td>
-              <td>{{ ev.properties.place || 'Sin descripción' }}</td>
-              <td>
-                <span class="country-cell" [class.maritime]="!ev.properties.country_id">
-                  {{ ev.properties.country_name || 'Sin país asignado' }}
-                  @if (ev.properties.country_id) {
-                    <small>({{ ev.properties.country_id }})</small>
+              </span>
+            </div>
+          </div>
+
+          <div class="selected-meta-grid">
+            <div class="meta-cell">
+              <span class="label">Profundidad</span>
+              <strong>{{ selected.geometry.coordinates[2] !== null ? selected.geometry.coordinates[2]!.toFixed(1) + ' km' : 'ND' }}</strong>
+            </div>
+            <div class="meta-cell">
+              <span class="label">Coordenadas</span>
+              <span>{{ selected.geometry.coordinates[1].toFixed(2) }}°, {{ selected.geometry.coordinates[0].toFixed(2) }}°</span>
+            </div>
+            <div class="meta-cell">
+              <span class="label">Fecha y Hora UTC</span>
+              <span>{{ formatDate(selected.properties.time) }}</span>
+            </div>
+            <div class="meta-cell">
+              <span class="label">Identificador USGS</span>
+              <code>{{ selected.id }}</code>
+            </div>
+          </div>
+
+          <div class="selected-actions">
+            <button 
+              type="button" 
+              class="btn-action-focus" 
+              (click)="selectAndFocusEvent(selected)">
+              🎯 Centrar en Globo 3D
+            </button>
+            <a 
+              [href]="'https://earthquake.usgs.gov/earthquakes/eventpage/' + selected.id" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              class="btn-action-external">
+              🌐 Ficha Oficial USGS ↗
+            </a>
+          </div>
+        </div>
+      </section>
+    }
+
+    <!-- 4. RESUMEN KPI Y COMPARATIVA HISTÓRICA 2025 -->
+    <section class="kpi-section" aria-label="Métricas e indicadores clave">
+      <div class="kpi-grid">
+        <div class="kpi-box">
+          <span class="kpi-title">Terremotos en Vista</span>
+          <span class="kpi-num">{{ kpiTotal() }}</span>
+          <small class="kpi-note">{{ omitted() }} omitidos por coordenadas inválidas</small>
+        </div>
+
+        <div class="kpi-box highlight-box">
+          <span class="kpi-title">Comparativa Histórica 2025 (M ≥ 4.0)</span>
+          <div class="kpi-comparison-val">
+            <strong>{{ histComparison().recuento_ultimas_24h_mag4 }}</strong> sismos 24h
+            <span class="vs-text">vs</span>
+            <strong>{{ histComparison().media_diaria_2025 }}</strong> media diaria '25
+          </div>
+          <div class="kpi-ratio-line">
+            Ratio actual/histórico: 
+            <strong>{{ histComparison().ratio_reciente_vs_historico ?? 'N/D' }}x</strong>
+          </div>
+          <small class="kpi-footnote">{{ histComparison().nota }}</small>
+        </div>
+
+        <div class="kpi-box">
+          <span class="kpi-title">Rango de Magnitud</span>
+          <div class="kpi-dual-num">
+            <span>Máx: <strong>{{ kpiMaxMag() }}</strong></span>
+            <span>Mín: <strong>{{ kpiMinMag() }}</strong></span>
+          </div>
+          <small class="kpi-note">{{ kpiNullMagCount() }} eventos con magnitud ND</small>
+        </div>
+
+        <div class="kpi-box">
+          <span class="kpi-title">Sismos Marítimos</span>
+          <span class="kpi-num">{{ kpiMaritimeCount() }}</span>
+          <small class="kpi-note">
+            {{ (kpiMaritimeCount() / (kpiTotal() || 1) * 100).toFixed(0) }} % sin país asignado (Dorsales)
+          </small>
+        </div>
+
+        <div class="kpi-box">
+          <span class="kpi-title">Profundidad Media</span>
+          <span class="kpi-num">{{ kpiAverageDepth() }}</span>
+          <small class="kpi-note">Hipocentros analizados</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. NAVEGACIÓN POR PESTAÑAS (DATOS DETALLADOS) -->
+    <section class="tabs-container" aria-label="Exploración detallada de datos">
+      <nav class="tabs-nav">
+        <button 
+          type="button" 
+          class="tab-btn" 
+          [class.active]="activeTab() === 'sismos'" 
+          (click)="setTab('sismos')">
+          📋 Lista de Sismos ({{ sortedEvents().length }})
+        </button>
+        <button 
+          type="button" 
+          class="tab-btn" 
+          [class.active]="activeTab() === 'graficos'" 
+          (click)="setTab('graficos')">
+          📊 Analítica & Gráficos
+        </button>
+        <button 
+          type="button" 
+          class="tab-btn" 
+          [class.active]="activeTab() === 'conclusiones'" 
+          (click)="setTab('conclusiones')">
+          📑 Conclusiones
+        </button>
+        <button 
+          type="button" 
+          class="tab-btn" 
+          [class.active]="activeTab() === 'mapa2d'" 
+          (click)="setTab('mapa2d')">
+          🗺️ Vista Cartográfica 2D
+        </button>
+      </nav>
+
+      <div class="tab-content">
+        <!-- PESTAÑA 1: LISTA / TABLA DE SISMOS -->
+        @if (activeTab() === 'sismos') {
+          <div class="tab-pane">
+            <div class="table-search-row">
+              <input 
+                type="text" 
+                class="search-input" 
+                placeholder="Buscar por lugar, país o identificador..." 
+                (input)="onSearch($event)" />
+              <small class="search-hint">💡 Clic en un sismo para girar el globo 3D hacia él</small>
+            </div>
+
+            <div class="table-wrapper">
+              <table class="sismos-table">
+                <thead>
+                  <tr>
+                    <th (click)="setSort('time')" class="sortable">Fecha (UTC)</th>
+                    <th (click)="setSort('mag')" class="sortable">Mag</th>
+                    <th (click)="setSort('depth')" class="sortable">Prof.</th>
+                    <th (click)="setSort('place')" class="sortable">Lugar</th>
+                    <th (click)="setSort('country')" class="sortable">País</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (ev of paginatedEvents(); track ev.id) {
+                    <tr 
+                      (click)="selectAndFocusEvent(ev)"
+                      [class.active-row]="selectedEarthquake()?.id === ev.id"
+                      class="clickable-row">
+                      <td class="cell-time">{{ formatDate(ev.properties.time) }}</td>
+                      <td>
+                        @if (ev.properties.mag !== null) {
+                          <span 
+                            class="table-mag" 
+                            [class.mag-high]="ev.properties.mag >= 5.0"
+                            [class.mag-mid]="ev.properties.mag >= 4.0 && ev.properties.mag < 5.0">
+                            {{ ev.properties.mag.toFixed(1) }}
+                          </span>
+                        } @else {
+                          <span class="badge-nd">ND</span>
+                        }
+                      </td>
+                      <td>
+                        @if (ev.geometry.coordinates[2] !== null) {
+                          <span>{{ ev.geometry.coordinates[2]!.toFixed(0) }} km</span>
+                        } @else {
+                          <span class="badge-nd">ND</span>
+                        }
+                      </td>
+                      <td class="cell-place" [title]="ev.properties.place || ''">
+                        {{ ev.properties.place || 'Sin descripción' }}
+                      </td>
+                      <td>
+                        <span class="table-country" [class.maritime]="!ev.properties.country_id">
+                          {{ ev.properties.country_name || '🌊 Sismo Oceánico' }}
+                        </span>
+                      </td>
+                    </tr>
+                  } @empty {
+                    <tr>
+                      <td colspan="5" class="empty-state">No hay terremotos coincidentes con los filtros.</td>
+                    </tr>
                   }
-                </span>
-              </td>
-              <td><code>{{ ev.id }}</code></td>
-            </tr>
-          } @empty {
-            <tr>
-              <td colspan="6" class="no-data">No se encontraron terremotos con los filtros seleccionados.</td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    </div>
+                </tbody>
+              </table>
+            </div>
 
-    <!-- Paginación de la Tabla -->
-    <div class="pagination-controls">
-      <span>Mostrando página <strong>{{ currentPage() }}</strong> de <strong>{{ totalPages() }}</strong> ({{ sortedEvents().length }} registros)</span>
-      <div class="page-buttons">
-        <button type="button" [disabled]="currentPage() <= 1" (click)="changePage(currentPage() - 1)">Anterior</button>
-        <button type="button" [disabled]="currentPage() >= totalPages()" (click)="changePage(currentPage() + 1)">Siguiente</button>
+            <!-- Controles de paginación -->
+            <div class="pagination-bar">
+              <span class="pagination-info">
+                Pág. <strong>{{ currentPage() }}</strong> de <strong>{{ totalPages() }}</strong>
+              </span>
+              <div class="pagination-buttons">
+                <button 
+                  type="button" 
+                  [disabled]="currentPage() <= 1" 
+                  (click)="changePage(currentPage() - 1)">
+                  ◀ Anterior
+                </button>
+                <button 
+                  type="button" 
+                  [disabled]="currentPage() >= totalPages()" 
+                  (click)="changePage(currentPage() + 1)">
+                  Siguiente ▶
+                </button>
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- PESTAÑA 2: GRÁFICOS Y DISTRIBUCIONES -->
+        @if (activeTab() === 'graficos') {
+          <div class="tab-pane charts-grid">
+            <!-- Gráfico 1: Profundidad -->
+            <div class="chart-card">
+              <h3>Distribución por Estrato de Profundidad</h3>
+              <div class="bars-list">
+                @for (b of depthDistribution(); track b.label) {
+                  <div class="bar-item">
+                    <span class="bar-title">{{ b.label }}</span>
+                    <div class="bar-track">
+                      <div class="bar-fill" [style.width.%]="b.barWidth" [style.background-color]="b.color"></div>
+                    </div>
+                    <span class="bar-val">{{ b.count }} ({{ b.pct }}%)</span>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- Gráfico 2: Magnitud -->
+            <div class="chart-card">
+              <h3>Distribución por Rangos de Magnitud</h3>
+              <div class="bars-list">
+                @for (b of magDistribution(); track b.label) {
+                  <div class="bar-item">
+                    <span class="bar-title">M {{ b.label }}</span>
+                    <div class="bar-track">
+                      <div class="bar-fill mag-color" [style.width.%]="b.barWidth"></div>
+                    </div>
+                    <span class="bar-val">{{ b.count }} ({{ b.pct }}%)</span>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- Gráfico 3: Serie Temporal 1h UTC -->
+            <div class="chart-card">
+              <h3>Frecuencia Temporal (Ventanas de 1h UTC)</h3>
+              @if (hourlyDistribution().length > 0) {
+                <div class="histogram-scroll">
+                  <div class="timeline-histogram">
+                    @for (h of hourlyDistribution(); track h.hour) {
+                      <div class="histogram-col" [title]="h.hour + ': ' + h.count + ' sismos'">
+                        <div class="histogram-bar" [style.height.px]="h.barHeight"></div>
+                        <span class="histogram-label">{{ h.hour }}</span>
+                      </div>
+                    }
+                  </div>
+                </div>
+              } @else {
+                <p class="empty-hint">Sin datos temporales en el intervalo seleccionado.</p>
+              }
+            </div>
+
+            <!-- Gráfico 4: Top Países -->
+            <div class="chart-card">
+              <h3>Top Zonas / Países con Mayor Actividad</h3>
+              <div class="bars-list">
+                @for (c of topCountries(); track c.name) {
+                  <div class="bar-item">
+                    <span class="bar-title">{{ c.name }}</span>
+                    <div class="bar-track">
+                      <div class="bar-fill country-color" [style.width.%]="c.barWidth"></div>
+                    </div>
+                    <span class="bar-val">{{ c.count }}</span>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- PESTAÑA 3: CONCLUSIONES CIENTÍFICAS -->
+        @if (activeTab() === 'conclusiones') {
+          <div class="tab-pane conclusions-pane">
+            <article class="conclusion-box">
+              <h3>1. Concentración en Hipocentros Superficiales</h3>
+              <p>
+                Más del <strong>70 %</strong> de los sismos en la ventana móvil de las últimas 24 horas presentan una profundidad menor a 70 km (estrato superficial). Estos eventos se concentran predominantemente en límites de placas tectónicas de subducción y fallas transformantes activas (Cinturón de Fuego del Pacífico y Cuenca Mediterránea).
+              </p>
+            </article>
+
+            <article class="conclusion-box">
+              <h3>2. Sismicidad Oceánica y Límites de Placa</h3>
+              <p>
+                Un <strong>{{ (kpiMaritimeCount() / (kpiTotal() || 1) * 100).toFixed(0) }} %</strong> de los sismos no poseen país asignado. La consulta espacial punto-en-polígono con Natural Earth corrobora que estos hipocentros se localizan en dorsales centro-oceánicas (como la dorsal Mesoatlántica) y fosas abisales, demostrando la necesidad metodológica de mantener la categoría explícita «Sin país asignado» sin forzar atribución al territorio costero más cercano.
+              </p>
+            </article>
+
+            <article class="conclusion-box">
+              <h3>3. Comparativa de Frecuencia frente al Catálogo 2025</h3>
+              <p>
+                Bajo el filtro homogéneo de magnitud <strong>M ≥ 4.0</strong>, la actividad reciente se compara contra la media anual histórica de 2025 (<strong>50.14 sismos diarios</strong> calculados sobre 365 días estrictos). Los periodos más recientes pueden mostrar un recuento temporalmente menor debido al tiempo de consolidación analítica que requieren las redes sismológicas para publicar soluciones revisadas definitivas.
+              </p>
+            </article>
+
+            <div class="disclaimer-callout">
+              <strong>Nota Metodológica y Científica:</strong> Las estadísticas corresponden a mediciones geofísicas de detección instrumental del USGS y cartografía Natural Earth. No representan una predicción de eventos sísmicos futuros ni constituyen una evaluación de riesgo para la población.
+            </div>
+          </div>
+        }
+
+        <!-- PESTAÑA 4: MAPA CARTOGRÁFICO 2D LEAFLET -->
+        @if (activeTab() === 'mapa2d') {
+          <div class="tab-pane map2d-pane">
+            <div class="map2d-header">
+              <span>Mapa Cartográfico 2D (Leaflet)</span>
+              <span class="badge">{{ filteredEvents().length }} puntos representados</span>
+            </div>
+            <div 
+              class="leaflet-map-canvas" 
+              leaflet 
+              [leafletOptions]="options" 
+              (leafletMapReady)="onMapReady($event)">
+            </div>
+          </div>
+        }
       </div>
-    </div>
-  </section>
-
-  <!-- CONCLUSIONES CIENTÍFICAS FUNDAMENTADAS -->
-  <section class="conclusions-section" aria-label="Conclusiones fundamentadas">
-    <h2>Conclusiones Analíticas del Observatorio</h2>
-    <div class="conclusions-grid">
-      <article class="conclusion-card">
-        <h3>1. Concentración en Hipocentros Superficiales</h3>
-        <p>
-          En la ventana móvil analizada de las últimas 24 horas, más del <strong>70 %</strong> de los sismos registrados presentan una profundidad inferior a 70 km (estrato superficial). Estos eventos se concentran predominantemente en límites de placas tectónicas de subducción y fallas transformantes activas (Cinturón de Fuego del Pacífico y Cuenca Mediterránea).
-        </p>
-      </article>
-
-      <article class="conclusion-card">
-        <h3>2. Alta Proporción de Sismicidad Oceánica y Marítima</h3>
-        <p>
-          Un <strong>{{ (kpiMaritimeCount() / (kpiTotal() || 1) * 100).toFixed(0) }} %</strong> de los eventos clasificados no tienen país asignado. La integración espacial punto-en-polígono con el catálogo Natural Earth confirma que estos hipocentros se localizan en dorsales oceánicas (como la dorsal Mesoatlántica) y fosas abisales, demostrando la necesidad de mantener la categoría explícita «Sin país asignado» sin forzar atribución errónea al país costero más cercano.
-        </p>
-      </article>
-
-      <article class="conclusion-card">
-        <h3>3. Comparativa de Frecuencia frente al Catálogo 2025</h3>
-        <p>
-          Con un filtro homogéneo de magnitud <strong>M ≥ 4.0</strong>, la tasa reciente registrada de eventos se compara contra la media anual histórica de 2025 (<strong>50.14 sismos diarios</strong> calculados sobre 365 días estrictos). Los periodos más recientes pueden mostrar un recuento temporalmente menor debido al tiempo de consolidación analítica que requieren las redes sismológicas para publicar soluciones revisadas definitivas.
-        </p>
-      </article>
-    </div>
-    <div class="disclaimer-box">
-      <strong>Nota Metodológica y Científica:</strong> Las estadísticas y distribuciones presentadas corresponden a mediciones geofísicas de detección instrumental de USGS y Natural Earth. No representan una predicción de eventos sísmicos futuros ni constituyen una evaluación de riesgo para la población.
-    </div>
-  </section>
-</main>
+    </section>
+  </aside>
+</div>

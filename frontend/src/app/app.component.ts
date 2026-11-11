@@ -1,8 +1,9 @@
-import { Component, OnDestroy, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LeafletDirective } from '@bluehalo/ngx-leaflet';
 import * as L from 'leaflet';
 import type { FeatureCollection, Point } from 'geojson';
+import { GlobeComponent } from './globe/globe.component';
 
 export interface EarthquakeProperties {
   mag: number | null;
@@ -53,11 +54,14 @@ export interface CountryOption {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, LeafletDirective],
+  imports: [CommonModule, LeafletDirective, GlobeComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css'
 })
-export class AppComponent implements OnDestroy {
+export class AppComponent implements OnInit, OnDestroy {
+  @ViewChild(GlobeComponent)
+  globeComp?: GlobeComponent;
+
   // --- Estados reactivos principales ---
   readonly mode = signal<string>('Cargando configuración...');
   readonly status = signal<string>('Inicializando observatorio...');
@@ -71,6 +75,12 @@ export class AppComponent implements OnDestroy {
 
   // --- Modalidad de operación (Live vs Replay) ---
   readonly activeMode = signal<'live' | 'replay'>('live');
+
+  // --- Pestaña activa del menú derecho ---
+  readonly activeTab = signal<'sismos' | 'graficos' | 'conclusiones' | 'mapa2d'>('sismos');
+
+  // --- Terremoto seleccionado (para enfocar e inspeccionar) ---
+  readonly selectedEarthquake = signal<EarthquakeFeature | null>(null);
 
   // --- Filtros analíticos interactivos ---
   readonly filterMinMag = signal<number | null>(null);
@@ -88,9 +98,10 @@ export class AppComponent implements OnDestroy {
   // --- Datos en crudo y catálogo ---
   readonly rawFeatures = signal<EarthquakeFeature[]>([]);
   readonly countriesList = signal<CountryOption[]>([]);
+  readonly countriesGeoJson = signal<FeatureCollection | null>(null);
   readonly backendStats = signal<any>(null);
 
-  // --- Configuración y capas de Leaflet ---
+  // --- Configuración y capas de Leaflet (Modo 2D) ---
   readonly options: L.MapOptions = {
     center: L.latLng(20, 0),
     zoom: 2,
@@ -240,7 +251,6 @@ export class AppComponent implements OnDestroy {
     if (stats?.comparacion_historica) {
       return stats.comparacion_historica;
     }
-    // Cálculo de referencia local si no hay estadísticas del backend:
     // Año 2025: 18.302 sismos globales (M>=4.0) entre 365 días = 50.14 sismos/día
     const recentMag4 = this.filteredEvents().filter(e => (e.properties.mag ?? 0) >= 4.0).length;
     const mediaDiaria = 50.14;
@@ -341,65 +351,19 @@ export class AppComponent implements OnDestroy {
   });
 
   // =========================================================================
-  // CICLO DE VIDA Y CARGA DEL MAPA
+  // CICLO DE VIDA Y CARGA INICIAL
   // =========================================================================
 
-  async onMapReady(map: L.Map): Promise<void> {
-    this.map = map;
+  async ngOnInit(): Promise<void> {
+    await this.initAppData();
+  }
 
-    // Capas base de mapas:
-    // CartoDB Voyager es libre, usa datos OpenStreetMap y no bloquea localhost por Tile Usage Policy como tile.openstreetmap.org
-    const cartoVoyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      subdomains: 'abcd',
-      noWrap: true,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-    }).addTo(map);
-
-    const cartoPositron = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      subdomains: 'abcd',
-      noWrap: true,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-    });
-
-    const osmBase = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      noWrap: true,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    });
-
-    // Fronteras de países (Natural Earth)
-    this.bordersLayer = L.geoJSON(undefined, {
-      style: { color: '#334155', weight: 1, fill: false },
-      onEachFeature: (feature: any, layer: any) => {
-        const name = document.createElement('span');
-        name.textContent = feature.properties?.NAME_ES ?? feature.properties?.ADMIN ?? 'Sin nombre';
-        layer.bindTooltip(name);
-      }
-    }).addTo(map);
-
-    this.eventsLayer.addTo(map);
-
-    L.control.layers(
-      {
-        'CartoDB Voyager (Recomendado)': cartoVoyager,
-        'CartoDB Positron (Claro)': cartoPositron,
-        'OpenStreetMap (Estándar)': osmBase
-      },
-      {
-        'Fronteras (Natural Earth)': this.bordersLayer,
-        'Terremotos': this.eventsLayer
-      }
-    ).addTo(map);
-
-    map.attributionControl.addAttribution('Fronteras: Natural Earth · Datos reales: USGS');
-
+  private async initAppData(): Promise<void> {
     // 1. Cargar catálogo geográfico de países
     try {
       const countriesGeo = await this.readJson<FeatureCollection>('datos/paises.geojson');
-      this.bordersLayer.addData(countriesGeo);
-      
+      this.countriesGeoJson.set(countriesGeo);
+
       const list: CountryOption[] = [];
       for (const feat of countriesGeo.features as any[]) {
         const p = feat.properties;
@@ -431,6 +395,67 @@ export class AppComponent implements OnDestroy {
     }
   }
 
+  // =========================================================================
+  // MAPA LEAFLET 2D (Alternativa y compatibilidad de rúbrica)
+  // =========================================================================
+
+  async onMapReady(map: L.Map): Promise<void> {
+    this.map = map;
+
+    const cartoVoyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      subdomains: 'abcd',
+      noWrap: true,
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    }).addTo(map);
+
+    const cartoPositron = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      subdomains: 'abcd',
+      noWrap: true,
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    });
+
+    const osmBase = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      noWrap: true,
+      attribution: '&copy; OpenStreetMap contributors'
+    });
+
+    // Fronteras de países (Natural Earth)
+    this.bordersLayer = L.geoJSON(undefined, {
+      style: { color: '#334155', weight: 1, fill: false },
+      onEachFeature: (feature: any, layer: any) => {
+        const name = document.createElement('span');
+        name.textContent = feature.properties?.NAME_ES ?? feature.properties?.ADMIN ?? 'Sin nombre';
+        layer.bindTooltip(name);
+      }
+    }).addTo(map);
+
+    const geo = this.countriesGeoJson();
+    if (geo) {
+      this.bordersLayer.addData(geo);
+    }
+
+    this.eventsLayer.addTo(map);
+
+    L.control.layers(
+      {
+        'CartoDB Voyager (Recomendado)': cartoVoyager,
+        'CartoDB Positron (Claro)': cartoPositron,
+        'OpenStreetMap (Estándar)': osmBase
+      },
+      {
+        'Fronteras (Natural Earth)': this.bordersLayer,
+        'Terremotos': this.eventsLayer
+      }
+    ).addTo(map);
+
+    map.attributionControl.addAttribution('Fronteras: Natural Earth · Datos reales: USGS');
+
+    this.renderMapMarkers();
+  }
+
   private async readJson<T>(url: string, headers: Record<string, string> = {}): Promise<T> {
     const response = await fetch(url, {
       headers,
@@ -457,7 +482,6 @@ export class AppComponent implements OnDestroy {
           headers['ngrok-skip-browser-warning'] = '1';
         }
 
-        // Consultar estadísticas completas de la API en paralelo
         this.fetchApiStats(base, headers, modeParam);
       }
 
@@ -470,7 +494,6 @@ export class AppComponent implements OnDestroy {
 
       this.rawFeatures.set(data.features);
 
-      // Comprobar frescura y última ingesta
       if (data.metadata?.last_ingestion) {
         const lastIngMs = data.metadata.last_ingestion;
         this.lastIngestion.set(this.formatDate(lastIngMs));
@@ -485,7 +508,6 @@ export class AppComponent implements OnDestroy {
       this.generated.set(this.formatDate(data.metadata?.generated));
       this.status.set(cfg.mode === 'demo' ? 'Demostración estática' : 'API conectada · Datos actualizados');
 
-      // Actualizar capa gráfica en el mapa de Leaflet
       this.renderMapMarkers();
     } catch (err: any) {
       if (!this.destroyed) {
@@ -506,7 +528,7 @@ export class AppComponent implements OnDestroy {
       const stats = await this.readJson<any>(statsUrl, headers);
       this.backendStats.set(stats);
     } catch {
-      // Si falla endpoint de estadísticas, los computed signals se encargan del fallback local
+      // Fallback local en computed signals
     }
   }
 
@@ -535,8 +557,6 @@ export class AppComponent implements OnDestroy {
       const magnitude = typeof p.mag === 'number' && Number.isFinite(p.mag) ? p.mag : null;
       const depthOk = typeof depth === 'number' && Number.isFinite(depth);
 
-      // Color codificado por estrato de profundidad:
-      // Superficial (<70km) -> Amarillo | Intermedio (70-299km) -> Naranja | Profundo (>=300km) -> Púrpura | ND -> Gris
       const color = !depthOk
         ? '#64748b'
         : depth < 70
@@ -545,7 +565,6 @@ export class AppComponent implements OnDestroy {
         ? '#f97316'
         : '#a855f7';
 
-      // Radio proporcional a la magnitud (mínimo 4px para magnitud nula)
       const radius = magnitude === null
         ? 4
         : Math.max(4, Math.min(22, 4 + (magnitude + 1) * 2.2));
@@ -557,7 +576,7 @@ export class AppComponent implements OnDestroy {
           <strong style="font-size: 14px; color: #0f172a;">${p.place ?? 'Sin descripción'}</strong>
           <div style="margin-top: 6px; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px;">
             <span style="color: #64748b;">Magnitud:</span>
-            <strong>${magnitude !== null ? magnitude.toFixed(1) + (p.magType ? ' (' + p.magType + ')' : '') : '<span style="color:#e11d48">ND (Sin calcular)</span>'}</strong>
+            <strong>${magnitude !== null ? magnitude.toFixed(1) + (p.magType ? ' (' + p.magType + ')' : '') : '<span style="color:#e11d48">ND</span>'}</strong>
             <span style="color: #64748b;">Profundidad:</span>
             <span>${depthOk ? depth.toFixed(1) + ' km' : 'ND'}</span>
             <span style="color: #64748b;">Fecha UTC:</span>
@@ -586,7 +605,37 @@ export class AppComponent implements OnDestroy {
     this.omitted.set(omittedCount);
   }
 
-  // --- Handlers de interacción del usuario ---
+  // =========================================================================
+  // INTEGRACIÓN CON GLOBO 3D Y MANEJO DE EVENTOS
+  // =========================================================================
+
+  onGlobeEventSelect(event: EarthquakeFeature): void {
+    this.selectedEarthquake.set(event);
+  }
+
+  onGlobeEventHover(event: EarthquakeFeature | null): void {
+    // Si se desea mostrar información adicional en tiempo real al pasar el ratón
+  }
+
+  selectAndFocusEvent(event: EarthquakeFeature): void {
+    this.selectedEarthquake.set(event);
+    const coords = event.geometry.coordinates;
+    if (coords && coords.length >= 2) {
+      const [lon, lat] = coords;
+      this.globeComp?.focusOnLocation(lat, lon);
+    }
+  }
+
+  clearSelectedEvent(): void {
+    this.selectedEarthquake.set(null);
+  }
+
+  setTab(tab: 'sismos' | 'graficos' | 'conclusiones' | 'mapa2d'): void {
+    this.activeTab.set(tab);
+    if (tab === 'mapa2d') {
+      setTimeout(() => this.map?.invalidateSize(), 150);
+    }
+  }
 
   setMode(mode: 'live' | 'replay'): void {
     this.activeMode.set(mode);

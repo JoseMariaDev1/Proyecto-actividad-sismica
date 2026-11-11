@@ -1,6 +1,6 @@
 {
-  "mode": "demo",
-  "apiUrl": "https://TU-DOMINIO-NGROK",
+  "mode": "api",
+  "apiUrl": "https://deftly-footing-study.ngrok-free.dev",
   "refreshMs": 60000,
   "skipNgrokWarning": true
 }

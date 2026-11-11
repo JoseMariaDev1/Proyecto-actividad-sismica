@@ -63,3 +63,4 @@ Responsabilidades técnicas:
 
 Asegura código limpio, estructurado, en español y con rigor científico.
 ```
+

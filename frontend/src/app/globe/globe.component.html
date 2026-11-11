@@ -1,0 +1,155 @@
+<div 
+  #containerRef 
+  class="globe-viewport"
+  (mousemove)="onPointerMove($event)"
+  (mousedown)="onPointerDown($event)"
+  (mouseup)="onPointerUp($event)"
+  (click)="onClick($event)"
+  (mouseleave)="onPointerLeave()">
+  
+  <!-- Canvas 3D de WebGL Three.js -->
+  <canvas #globeCanvas class="globe-canvas"></canvas>
+
+  <!-- Barra de Herramientas Flotante del Globo -->
+  <div class="globe-toolbar">
+    <div class="toolbar-brand">
+      <span class="pulse-dot"></span>
+      <span>GLOBO 3D INTERACTIVO</span>
+    </div>
+
+    <div class="toolbar-actions">
+      <!-- Selector de Textura Día / Noche -->
+      <div class="btn-group">
+        <button 
+          type="button" 
+          class="btn-tool" 
+          [class.active]="textureMode() === 'day'" 
+          (click)="setTextureMode('day')"
+          title="Textura Satelital Diurna (NASA Blue Marble)">
+          ☀️ Satélite
+        </button>
+        <button 
+          type="button" 
+          class="btn-tool" 
+          [class.active]="textureMode() === 'night'" 
+          (click)="setTextureMode('night')"
+          title="Textura de Luces Nocturnas">
+          🌙 Noche
+        </button>
+      </div>
+
+      <!-- Auto-Rotación -->
+      <button 
+        type="button" 
+        class="btn-tool" 
+        [class.active]="autoRotate()" 
+        (click)="toggleAutoRotate()"
+        title="Activar / Pausar rotación automática del planeta">
+        🔄 {{ autoRotate() ? 'Rotando' : 'Pausado' }}
+      </button>
+
+      <!-- Fronteras Políticas -->
+      <button 
+        type="button" 
+        class="btn-tool" 
+        [class.active]="showBorders()" 
+        (click)="toggleBorders()"
+        title="Mostrar / Ocultar fronteras de países Natural Earth">
+        🗺️ Fronteras
+      </button>
+
+      <!-- Capa de Nubes -->
+      <button 
+        type="button" 
+        class="btn-tool" 
+        [class.active]="showClouds()" 
+        (click)="toggleClouds()"
+        title="Mostrar / Ocultar atmósfera con nubes">
+        ☁️ Nubes
+      </button>
+
+      <!-- Centrar Cámara -->
+      <button 
+        type="button" 
+        class="btn-tool btn-reset" 
+        (click)="resetCamera()"
+        title="Restablecer posición inicial de la cámara">
+        🎯 Centrar
+      </button>
+    </div>
+  </div>
+
+  <!-- Contador Flotante de Sismos en 3D -->
+  <div class="globe-counter-pill">
+    <strong>{{ events().length }}</strong> sismos proyectados en el globo
+  </div>
+
+  <!-- Leyenda Estratos Sísmicos Flotante -->
+  <div class="globe-legend">
+    <div class="legend-title">Estratos de Profundidad Hipocentral:</div>
+    <div class="legend-row">
+      <span class="legend-chip sup">
+        <span class="color-dot"></span> &lt;70 km (Superficial)
+      </span>
+      <span class="legend-chip int">
+        <span class="color-dot"></span> 70–299 km (Intermedio)
+      </span>
+      <span class="legend-chip pro">
+        <span class="color-dot"></span> ≥300 km (Profundo)
+      </span>
+      <span class="legend-chip nd">
+        <span class="color-dot"></span> ND
+      </span>
+    </div>
+    <div class="legend-tip">
+      <small>💡 Arrastra para girar · Rueda para zoom · Clic en un pilar para ver detalles</small>
+    </div>
+  </div>
+
+  <!-- HUD Flotante Tooltip al Pasar el Ratón -->
+  @if (tooltipVisible() && hoveredEvent(); as ev) {
+    <div 
+      class="globe-tooltip" 
+      [style.left.px]="tooltipPos().x + 14" 
+      [style.top.px]="tooltipPos().y - 14">
+      
+      <div class="tooltip-header">
+        <span 
+          class="badge-mag"
+          [class.mag-high]="(ev.properties.mag ?? 0) >= 5.0"
+          [class.mag-mid]="(ev.properties.mag ?? 0) >= 4.0 && (ev.properties.mag ?? 0) < 5.0">
+          M {{ ev.properties.mag !== null ? ev.properties.mag.toFixed(1) : 'ND' }}
+          @if (ev.properties.magType) {
+            <small>({{ ev.properties.magType }})</small>
+          }
+        </span>
+        <span class="tooltip-time">
+          {{ ev.properties.time | date:'dd/MM/yyyy HH:mm':'UTC' }} UTC
+        </span>
+      </div>
+
+      <div class="tooltip-place">
+        {{ ev.properties.place || 'Epicentro sin descripción' }}
+      </div>
+
+      <div class="tooltip-meta">
+        <div>
+          <span class="label">Profundidad:</span>
+          <strong>{{ ev.geometry.coordinates[2] !== null ? ev.geometry.coordinates[2]!.toFixed(1) + ' km' : 'ND' }}</strong>
+        </div>
+        <div>
+          <span class="label">País / Zona:</span>
+          <span [class.text-maritime]="!ev.properties.country_id">
+            {{ ev.properties.country_name || '🌊 Sismo Oceánico (Sin país)' }}
+          </span>
+        </div>
+      </div>
+
+      <div class="tooltip-hint">
+        <span>⚡ Clic para seleccionar y fijar en panel derecho</span>
+      </div>
+    </div>
+  }
+
+</div>
+

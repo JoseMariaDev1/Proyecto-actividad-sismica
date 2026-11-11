@@ -163,12 +163,20 @@ def build_demo_suite() -> list[dict]:
 
 async def run_replay(speed_delay_seconds: float = 0.5):
     logger.info("Iniciando productor de reproducción histórica...")
+    # Si se ejecuta desde el host (fuera de Docker), Kafka escucha en localhost:9092
+    bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    # Si viene con nombre del contenedor 'kafka:9092' y estamos fuera de docker, usar localhost:9092
+    if bootstrap_servers == "kafka:9092":
+        bootstrap_servers = "localhost:9092"
+
+    topic = os.getenv("KAFKA_TOPIC_REPLAY", getattr(settings.kafka, "topic_replay", "terremotos-replay"))
+
     producer = AIOKafkaProducer(
-        bootstrap_servers=settings.kafka_bootstrap_servers,
+        bootstrap_servers=bootstrap_servers,
         acks="all"
     )
     await producer.start()
-    logger.info(f"Conectado a Kafka en {settings.kafka_bootstrap_servers}.")
+    logger.info(f"Conectado a Kafka en {bootstrap_servers}.")
 
     events = build_demo_suite()
 
@@ -199,8 +207,7 @@ async def run_replay(speed_delay_seconds: float = 0.5):
             key_bytes = fid.encode("utf-8")
             val_bytes = json.dumps(payload).encode("utf-8")
 
-            # Se envía al topic de replay configurado (o al live con mode="replay")
-            topic = settings.kafka_topic_replay
+            # Se envía al topic de replay configurado
             await producer.send_and_wait(topic=topic, key=key_bytes, value=val_bytes)
             logger.info(f"[{idx}/{len(events)}] Publicado evento de reproducción: '{fid}' en topic '{topic}'.")
             await asyncio.sleep(speed_delay_seconds)

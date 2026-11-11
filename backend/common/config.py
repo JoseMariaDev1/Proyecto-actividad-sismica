@@ -190,3 +190,9 @@ def get_settings() -> Settings:
     Devuelve la instancia singleton en caché de la configuración del sistema.
     """
     return Settings()
+
+
+# Instancia singleton predeterminada para importación directa:
+# from backend.common.config import settings
+settings: Settings = get_settings()
+

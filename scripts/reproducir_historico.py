@@ -163,11 +163,10 @@ def build_demo_suite() -> list[dict]:
 
 async def run_replay(speed_delay_seconds: float = 0.5):
     logger.info("Iniciando productor de reproducción histórica...")
-    # Si se ejecuta desde el host (fuera de Docker), Kafka escucha en localhost:9092
-    bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-    # Si viene con nombre del contenedor 'kafka:9092' y estamos fuera de docker, usar localhost:9092
-    if bootstrap_servers == "kafka:9092":
-        bootstrap_servers = "localhost:9092"
+    # Si se ejecuta desde el host (fuera de Docker), conectarse al listener externo PLAINTEXT_HOST en localhost:29092
+    bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092")
+    if bootstrap_servers in ("kafka:9092", "localhost:9092"):
+        bootstrap_servers = "localhost:29092"
 
     topic = os.getenv("KAFKA_TOPIC_REPLAY", getattr(settings.kafka, "topic_replay", "terremotos-replay"))
 

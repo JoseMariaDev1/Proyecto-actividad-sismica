@@ -25,8 +25,14 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
-from aiokafka import AIOKafkaProducer
+from pathlib import Path
 
+# Asegurar que la raíz del proyecto está en sys.path para importar backend
+project_root = Path(__file__).resolve().parents[1]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from aiokafka import AIOKafkaProducer
 from backend.common.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [replay] %(message)s")

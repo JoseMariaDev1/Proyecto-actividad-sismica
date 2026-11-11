@@ -8,7 +8,15 @@ Genera evidencias verificables con consultas SQL y resultados antes/después.
 import asyncio
 import json
 import logging
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+# Asegurar que la raíz del proyecto está en sys.path para importar backend
+project_root = Path(__file__).resolve().parents[1]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import psycopg
 from psycopg.rows import dict_row
 

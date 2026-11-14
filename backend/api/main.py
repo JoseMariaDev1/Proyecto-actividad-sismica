@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import os
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -48,6 +49,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("sismos.api")
 
+# Filtro geográfico regional por variable de entorno (América vs Europa/Resto vs Global)
+API_REGION = os.getenv("API_REGION", "GLOBAL").strip().upper()
+logger.info(f"Región configurada para esta instancia de API: {API_REGION}")
+
+
 
 # ==============================================================================
 # Modelos Pydantic v2 (Esquemas de Entrada y Salida)
@@ -57,6 +63,7 @@ class SaludResponse(BaseModel):
     """Respuesta para el endpoint de monitorización de salud /api/salud."""
     estado: str = Field(..., description="Estado del servicio: 'ok' o 'error'")
     version: str = Field("1.0.0", description="Versión semántica del API")
+    region: str = Field("GLOBAL", description="Región geográfica atendida por esta API (AMERICA, EUROPA_RESTO, GLOBAL)")
     bd_conectada: bool = Field(..., description="Indica si hay conectividad activa con PostgreSQL")
     timestamp: str = Field(..., description="Marca temporal UTC actual en formato ISO 8601")
     ultima_ingesta: Optional[str] = Field(None, description="Timestamp UTC del último evento registrado en BD")
@@ -401,6 +408,7 @@ async def get_salud(request: Request) -> SaludResponse:
                 return SaludResponse(
                     estado="ok",
                     version="1.0.0",
+                    region=API_REGION,
                     bd_conectada=True,
                     timestamp=now_utc,
                     ultima_ingesta=ultima_ingesta_iso,
@@ -497,6 +505,12 @@ async def get_eventos(
     if modo_val is not None:
         clauses.append("mode = %(modo)s")
         params["modo"] = modo_val.strip().lower()
+
+    # Filtro por Región de la instancia API (si está configurada)
+    if API_REGION in ("AMERICA", "AMERICAS"):
+        clauses.append("country_id IN (SELECT code FROM paises WHERE continent IN ('North America', 'South America'))")
+    elif API_REGION in ("EUROPA_RESTO", "EUROPE_REST"):
+        clauses.append("(country_id IS NULL OR country_id IN (SELECT code FROM paises WHERE continent NOT IN ('North America', 'South America')))")
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 
@@ -684,6 +698,12 @@ async def get_estadisticas(
     if modo_val is not None:
         clauses.append("mode = %(modo)s")
         params["modo"] = modo_val.strip().lower()
+
+    # Filtro por Región de la instancia API (si está configurada)
+    if API_REGION in ("AMERICA", "AMERICAS"):
+        clauses.append("country_id IN (SELECT code FROM paises WHERE continent IN ('North America', 'South America'))")
+    elif API_REGION in ("EUROPA_RESTO", "EUROPE_REST"):
+        clauses.append("(country_id IS NULL OR country_id IN (SELECT code FROM paises WHERE continent NOT IN ('North America', 'South America')))")
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 

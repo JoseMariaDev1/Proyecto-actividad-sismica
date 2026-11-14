@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -35,13 +35,16 @@ from backend.api.main import app, get_db
 
 # ==============================================================================
 # Datos Falsos para Testing (Fixtures)
+# Fechas dinámicas (hace 2-4 horas) para que caigan siempre en la ventana móvil de 24h
 # ==============================================================================
+
+_NOW = datetime.now(timezone.utc)
 
 MOCK_EVENTS = [
     {
         "id": "us7000m8v1",
-        "time": datetime(2026, 11, 8, 12, 0, 0, tzinfo=timezone.utc),
-        "updated": datetime(2026, 11, 8, 12, 10, 0, tzinfo=timezone.utc),
+        "time": _NOW - timedelta(hours=4),
+        "updated": _NOW - timedelta(hours=3, minutes=50),
         "mag": 5.8,
         "mag_type": "mww",
         "place": "70 km W of Illapel, Chile",
@@ -56,13 +59,13 @@ MOCK_EVENTS = [
         "tsunami": 0,
         "sig": 512,
         "mode": "live",
-        "time_epoch_ms": 1794139200000,
-        "updated_epoch_ms": 1794139800000,
+        "time_epoch_ms": int((_NOW - timedelta(hours=4)).timestamp() * 1000),
+        "updated_epoch_ms": int((_NOW - timedelta(hours=3, minutes=50)).timestamp() * 1000),
     },
     {
         "id": "us7000m8v2",
-        "time": datetime(2026, 11, 8, 13, 30, 0, tzinfo=timezone.utc),
-        "updated": datetime(2026, 11, 8, 13, 35, 0, tzinfo=timezone.utc),
+        "time": _NOW - timedelta(hours=2),
+        "updated": _NOW - timedelta(hours=1, minutes=55),
         "mag": 3.4,
         "mag_type": "ml",
         "place": "15 km ENE of Granada, Spain",
@@ -77,13 +80,13 @@ MOCK_EVENTS = [
         "tsunami": 0,
         "sig": 180,
         "mode": "live",
-        "time_epoch_ms": 1794144600000,
-        "updated_epoch_ms": 1794144900000,
+        "time_epoch_ms": int((_NOW - timedelta(hours=2)).timestamp() * 1000),
+        "updated_epoch_ms": int((_NOW - timedelta(hours=1, minutes=55)).timestamp() * 1000),
     },
     {
         "id": "us7000m8v3",
-        "time": datetime(2026, 11, 8, 14, 15, 0, tzinfo=timezone.utc),
-        "updated": datetime(2026, 11, 8, 14, 20, 0, tzinfo=timezone.utc),
+        "time": _NOW - timedelta(hours=1),
+        "updated": _NOW - timedelta(minutes=55),
         "mag": 7.2,
         "mag_type": "mwb",
         "place": "Fiji Islands Region",
@@ -98,13 +101,13 @@ MOCK_EVENTS = [
         "tsunami": 1,
         "sig": 820,
         "mode": "live",
-        "time_epoch_ms": 1794147300000,
-        "updated_epoch_ms": 1794147600000,
+        "time_epoch_ms": int((_NOW - timedelta(hours=1)).timestamp() * 1000),
+        "updated_epoch_ms": int((_NOW - timedelta(minutes=55)).timestamp() * 1000),
     },
     {
         "id": "us7000m8v4",
-        "time": datetime(2026, 11, 8, 15, 0, 0, tzinfo=timezone.utc),
-        "updated": datetime(2026, 11, 8, 15, 5, 0, tzinfo=timezone.utc),
+        "time": _NOW - timedelta(minutes=30),
+        "updated": _NOW - timedelta(minutes=25),
         "mag": None,
         "mag_type": None,
         "place": "Mid-Atlantic Ridge",
@@ -199,6 +202,14 @@ class MockAsyncCursor:
             filtered = [e for e in filtered if e.get("country_id") is None]
         if "mode = %(modo)s" in q and "modo" in params:
             filtered = [e for e in filtered if e.get("mode") == params["modo"]]
+
+        # Soporte para filtro regional de API_REGION
+        if "continent IN ('North America', 'South America')" in q:
+            american_codes = {c["code"] for c in self.countries if c["continent"] in ("North America", "South America")}
+            filtered = [e for e in filtered if e.get("country_id") in american_codes]
+        elif "continent NOT IN ('North America', 'South America')" in q:
+            american_codes = {c["code"] for c in self.countries if c["continent"] in ("North America", "South America")}
+            filtered = [e for e in filtered if e.get("country_id") is None or e.get("country_id") not in american_codes]
 
         # 5. COUNT(*) en v_eventos_api
         if "SELECT COUNT(*) AS total FROM v_eventos_api" in q:

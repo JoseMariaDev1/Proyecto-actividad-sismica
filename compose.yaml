@@ -107,7 +107,7 @@ services:
       - sismos-net
 
   # ============================================================================
-  # 5. API REST FastAPI: Servicio de consulta para Frontend y túnel ngrok
+  # 5. API REST FastAPI: Servicio Principal / Global (Puerto 8000)
   # ============================================================================
   api:
     build:
@@ -126,6 +126,63 @@ services:
       POSTGRES_PORT: 5432
       API_HOST: 0.0.0.0
       API_PORT: 8000
+      API_REGION: GLOBAL
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,https://*.netlify.app}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sismos-net
+
+  # ============================================================================
+  # 5b. API REST Especializada: América (Puerto 8001)
+  # ============================================================================
+  api-america:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: sismos-api-america
+    restart: unless-stopped
+    command: ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8001:8000"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sismos}
+      POSTGRES_USER: ${POSTGRES_USER:-sismo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sismo_secreto}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_REGION: AMERICA
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,https://*.netlify.app}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sismos-net
+
+  # ============================================================================
+  # 5c. API REST Especializada: Europa y Resto del Mundo (Puerto 8002)
+  # ============================================================================
+  api-resto:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: sismos-api-resto
+    restart: unless-stopped
+    command: ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8002:8000"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sismos}
+      POSTGRES_USER: ${POSTGRES_USER:-sismo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sismo_secreto}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_REGION: EUROPA_RESTO
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,https://*.netlify.app}
     depends_on:
       postgres:

@@ -7,6 +7,7 @@
       [events]="filteredEvents()"
       [selectedEventId]="selectedEarthquake()?.id ?? null"
       [countriesGeoJson]="countriesGeoJson()"
+      [platesGeoJson]="platesGeoJson()"
       (eventSelected)="onGlobeEventSelect($event)"
       (eventHovered)="onGlobeEventHover($event)">
     </app-globe>

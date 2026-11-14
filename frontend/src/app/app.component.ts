@@ -103,6 +103,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly rawFeatures = signal<EarthquakeFeature[]>([]);
   readonly countriesList = signal<CountryOption[]>([]);
   readonly countriesGeoJson = signal<FeatureCollection | null>(null);
+  readonly platesGeoJson = signal<FeatureCollection | null>(null);
   readonly backendStats = signal<any>(null);
 
   // --- Configuración y capas de Leaflet (Modo 2D) ---
@@ -118,6 +119,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private map?: L.Map;
   private eventsLayer = L.layerGroup();
   private bordersLayer?: L.GeoJSON;
+  private platesLayer?: L.GeoJSON;
   private timer?: ReturnType<typeof setTimeout>;
   private controller = new AbortController();
   private destroyed = false;
@@ -363,7 +365,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private async initAppData(): Promise<void> {
-    // 1. Cargar catálogo geográfico de países
+    // 1. Cargar catálogo geográfico de países y placas tectónicas
     try {
       const countriesGeo = await this.readJson<FeatureCollection>('datos/paises.geojson');
       this.countriesGeoJson.set(countriesGeo);
@@ -383,6 +385,16 @@ export class AppComponent implements OnInit, OnDestroy {
       this.countriesStatus.set(`${list.length} países cargados`);
     } catch (err) {
       this.countriesStatus.set('No se pudo cargar el catálogo de países');
+    }
+
+    try {
+      const platesGeo = await this.readJson<FeatureCollection>('datos/placas_tectonicas.geojson');
+      this.platesGeoJson.set(platesGeo);
+      if (this.platesLayer && platesGeo) {
+        this.platesLayer.addData(platesGeo);
+      }
+    } catch {
+      console.warn('No se pudo cargar el mapa de placas tectónicas');
     }
 
     if (this.destroyed) return;
@@ -441,6 +453,16 @@ export class AppComponent implements OnInit, OnDestroy {
       this.bordersLayer.addData(geo);
     }
 
+    // Placas Tectónicas (PB2002)
+    this.platesLayer = L.geoJSON(undefined, {
+      style: { color: '#ff3b30', weight: 2.2, opacity: 0.85 }
+    }).addTo(map);
+
+    const plates = this.platesGeoJson();
+    if (plates) {
+      this.platesLayer.addData(plates);
+    }
+
     this.eventsLayer.addTo(map);
 
     L.control.layers(
@@ -450,12 +472,13 @@ export class AppComponent implements OnInit, OnDestroy {
         'OpenStreetMap (Estándar)': osmBase
       },
       {
+        'Placas Tectónicas (Fallas)': this.platesLayer,
         'Fronteras (Natural Earth)': this.bordersLayer,
         'Terremotos': this.eventsLayer
       }
     ).addTo(map);
 
-    map.attributionControl.addAttribution('Fronteras: Natural Earth · Datos reales: USGS');
+    map.attributionControl.addAttribution('Fronteras: Natural Earth · Placas: Peter Bird 2002 · Datos reales: USGS');
 
     this.renderMapMarkers();
   }

@@ -58,6 +58,17 @@
         🗺️ Fronteras
       </button>
 
+      <!-- Placas Tectónicas -->
+      <button 
+        type="button" 
+        class="btn-tool" 
+        [class.active]="showPlates()" 
+        (click)="togglePlates()"
+        style="border-color: rgba(255, 59, 48, 0.4);"
+        title="Mostrar / Ocultar fallas y placas tectónicas (PB2002)">
+        🌋 Placas Tectónicas
+      </button>
+
       <!-- Capa de Nubes -->
       <button 
         type="button" 
@@ -99,6 +110,9 @@
       </span>
       <span class="legend-chip nd">
         <span class="color-dot"></span> ND
+      </span>
+      <span class="legend-chip" style="background: rgba(255, 59, 48, 0.15); border: 1px solid rgba(255, 59, 48, 0.4); color: #ff6b6b;">
+        <span class="color-dot" style="background: #ff3b30; box-shadow: 0 0 6px #ff3b30;"></span> Placas Tectónicas
       </span>
     </div>
     <div class="legend-tip">

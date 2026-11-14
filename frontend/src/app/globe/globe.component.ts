@@ -35,6 +35,7 @@ export class GlobeComponent implements OnInit, AfterViewInit, OnDestroy {
   events = input<EarthquakeFeature[]>([]);
   selectedEventId = input<string | null>(null);
   countriesGeoJson = input<FeatureCollection | null>(null);
+  platesGeoJson = input<FeatureCollection | null>(null);
 
   // --- Outputs ---
   eventSelected = output<EarthquakeFeature>();
@@ -44,6 +45,7 @@ export class GlobeComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly autoRotate = signal<boolean>(true);
   readonly textureMode = signal<'day' | 'night'>('day');
   readonly showBorders = signal<boolean>(true);
+  readonly showPlates = signal<boolean>(true);
   readonly showClouds = signal<boolean>(true);
   readonly hoveredEvent = signal<EarthquakeFeature | null>(null);
   readonly tooltipPos = signal<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -62,6 +64,7 @@ export class GlobeComponent implements OnInit, AfterViewInit, OnDestroy {
   private atmosphereMesh!: THREE.Mesh;
   private starField!: THREE.Points;
   private bordersLine: THREE.LineSegments | null = null;
+  private platesLine: THREE.LineSegments | null = null;
   private markersGroup = new THREE.Group();
   private ripplesGroup = new THREE.Group();
 
@@ -101,6 +104,14 @@ export class GlobeComponent implements OnInit, AfterViewInit, OnDestroy {
       const geo = this.countriesGeoJson();
       if (this.isLoaded() && geo) {
         this.buildCountryBorders(geo);
+      }
+    });
+
+    // Re-render placas tectónicas cuando llega su GeoJSON
+    effect(() => {
+      const plates = this.platesGeoJson();
+      if (this.isLoaded() && plates) {
+        this.buildTectonicPlates(plates);
       }
     });
   }
@@ -299,8 +310,49 @@ export class GlobeComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   // =========================================================================
-  // FRONTERAS DE PAÍSES (Natural Earth GeoJSON)
+  // PLACAS TECTÓNICAS (Fallas geológicas globales Peter Bird 2002)
   // =========================================================================
+
+  private buildTectonicPlates(geo: FeatureCollection): void {
+    if (this.platesLine) {
+      this.earthGroup.remove(this.platesLine);
+      this.platesLine.geometry.dispose();
+      this.platesLine = null;
+    }
+
+    const segments: number[] = [];
+    const R = this.GLOBE_RADIUS + 0.45; // Ligeramente por encima de la superficie para destacar
+
+    for (const feat of geo.features as any[]) {
+      const geom = feat.geometry;
+      if (!geom) continue;
+
+      if (geom.type === 'LineString') {
+        this.addRingToSegments(geom.coordinates, segments, R);
+      } else if (geom.type === 'MultiLineString') {
+        for (const line of geom.coordinates) {
+          this.addRingToSegments(line, segments, R);
+        }
+      }
+    }
+
+    if (!segments.length) return;
+
+    const lineGeom = new THREE.BufferGeometry();
+    lineGeom.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3));
+
+    // Color rojo/naranja brillante neón bien visible para las placas tectónicas
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0xff3b30,
+      transparent: true,
+      opacity: 0.85,
+      linewidth: 2
+    });
+
+    this.platesLine = new THREE.LineSegments(lineGeom, lineMat);
+    this.platesLine.visible = this.showPlates();
+    this.earthGroup.add(this.platesLine);
+  }
 
   private buildCountryBorders(geo: FeatureCollection): void {
     if (this.bordersLine) {
@@ -545,6 +597,14 @@ export class GlobeComponent implements OnInit, AfterViewInit, OnDestroy {
     this.showBorders.set(next);
     if (this.bordersLine) {
       this.bordersLine.visible = next;
+    }
+  }
+
+  togglePlates(): void {
+    const next = !this.showPlates();
+    this.showPlates.set(next);
+    if (this.platesLine) {
+      this.platesLine.visible = next;
     }
   }
 

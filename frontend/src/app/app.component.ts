@@ -539,7 +539,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  private async fetchApiStats(apiBase: string, headers: Record<string, string>, mode: string, region: string) {
+  private async fetchApiStats(apiBase: string, headers: Record<string, string>, mode: string, region: string = 'GLOBAL') {
     try {
       const statsUrl = `${apiBase}/api/estadisticas?mode=${mode}&region=${region}`;
       const stats = await this.readJson<any>(statsUrl, headers);

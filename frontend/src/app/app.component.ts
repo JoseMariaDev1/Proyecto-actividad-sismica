@@ -76,6 +76,10 @@ export class AppComponent implements OnInit, OnDestroy {
   // --- Modalidad de operación (Live vs Replay) ---
   readonly activeMode = signal<'live' | 'replay'>('live');
 
+  // --- Región Activa (Global, América, Europa y Resto) ---
+  readonly activeRegion = signal<'GLOBAL' | 'AMERICA' | 'EUROPA_RESTO'>('GLOBAL');
+  readonly apiRegionReported = signal<string>('GLOBAL');
+
   // --- Pestaña activa del menú derecho ---
   readonly activeTab = signal<'sismos' | 'graficos' | 'conclusiones' | 'mapa2d'>('sismos');
 
@@ -475,7 +479,19 @@ export class AppComponent implements OnInit, OnDestroy {
       const headers: Record<string, string> = {};
 
       if (cfg.mode === 'api') {
-        const base = cfg.apiUrl.replace(/\/$/, '');
+        let base = cfg.apiUrl.replace(/\/$/, '');
+        
+        // Si estamos probando en localhost, enrutar al puerto del microservicio correspondiente
+        if (base.includes('localhost') || base.includes('127.0.0.1')) {
+          if (this.activeRegion() === 'AMERICA') {
+            base = base.replace(/:800[0-9]/, ':8001');
+          } else if (this.activeRegion() === 'EUROPA_RESTO') {
+            base = base.replace(/:800[0-9]/, ':8002');
+          } else {
+            base = base.replace(/:800[0-9]/, ':8000');
+          }
+        }
+
         const modeParam = this.activeMode();
         eventsUrl = `${base}/api/eventos?mode=${modeParam}`;
         if (cfg.skipNgrokWarning) {
@@ -639,6 +655,14 @@ export class AppComponent implements OnInit, OnDestroy {
 
   setMode(mode: 'live' | 'replay'): void {
     this.activeMode.set(mode);
+    this.refresh();
+  }
+
+  setRegion(region: 'GLOBAL' | 'AMERICA' | 'EUROPA_RESTO'): void {
+    if (this.activeRegion() === region) return;
+    this.activeRegion.set(region);
+    this.currentPage.set(1);
+    this.status.set(`Conectando a microservicio API ${region}...`);
     this.refresh();
   }
 

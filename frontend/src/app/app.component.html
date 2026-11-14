@@ -69,6 +69,39 @@
           </button>
         </div>
 
+        <!-- Selector de Microservicio Regional (América vs Europa/Resto vs Global) -->
+        <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 4px;">
+          <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">
+            📡 Microservicio API Conectado:
+          </span>
+          <div class="mode-switcher" style="grid-template-columns: 1fr 1fr 1fr;">
+            <button 
+              type="button" 
+              class="mode-btn" 
+              [class.active]="activeRegion() === 'GLOBAL'"
+              (click)="setRegion('GLOBAL')"
+              title="API Global (Puerto 8000)">
+              🌐 Global
+            </button>
+            <button 
+              type="button" 
+              class="mode-btn" 
+              [class.active]="activeRegion() === 'AMERICA'"
+              (click)="setRegion('AMERICA')"
+              title="API Especializada América (Puerto 8001)">
+              🌎 América
+            </button>
+            <button 
+              type="button" 
+              class="mode-btn" 
+              [class.active]="activeRegion() === 'EUROPA_RESTO'"
+              (click)="setRegion('EUROPA_RESTO')"
+              title="API Especializada Europa y Resto (Puerto 8002)">
+              🌍 Europa/Resto
+            </button>
+          </div>
+        </div>
+
         @if (activeMode() === 'replay') {
           <div class="replay-warning">
             ⚠️ <strong>Modo Reproducción Activo:</strong> Consumiendo tópico simulado en Kafka.

@@ -493,12 +493,13 @@ export class AppComponent implements OnInit, OnDestroy {
         }
 
         const modeParam = this.activeMode();
-        eventsUrl = `${base}/api/eventos?mode=${modeParam}`;
+        const regParam = this.activeRegion();
+        eventsUrl = `${base}/api/eventos?mode=${modeParam}&region=${regParam}`;
         if (cfg.skipNgrokWarning) {
           headers['ngrok-skip-browser-warning'] = '1';
         }
 
-        this.fetchApiStats(base, headers, modeParam);
+        this.fetchApiStats(base, headers, modeParam, regParam);
       }
 
       const data = await this.readJson<EventsResponse>(eventsUrl, headers);
@@ -538,9 +539,9 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  private async fetchApiStats(apiBase: string, headers: Record<string, string>, mode: string) {
+  private async fetchApiStats(apiBase: string, headers: Record<string, string>, mode: string, region: string) {
     try {
-      const statsUrl = `${apiBase}/api/estadisticas?mode=${mode}`;
+      const statsUrl = `${apiBase}/api/estadisticas?mode=${mode}&region=${region}`;
       const stats = await this.readJson<any>(statsUrl, headers);
       this.backendStats.set(stats);
     } catch {

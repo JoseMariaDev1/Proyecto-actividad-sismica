@@ -455,6 +455,7 @@ async def get_eventos(
     country_id: Optional[str] = Query(None, description="Alias para 'pais'"),
     modo: Optional[str] = Query(None, description="Modo operativo: 'live' o 'replay'"),
     mode: Optional[str] = Query(None, description="Alias para 'modo'"),
+    region: Optional[str] = Query(None, description="Filtro regional opcional por query param: 'AMERICA', 'EUROPA_RESTO' o 'GLOBAL'"),
     limite: int = Query(500, ge=1, le=2000, description="Cantidad máxima de eventos (def: 500, máx: 2000)"),
     limit: Optional[int] = Query(None, ge=1, le=2000, description="Alias para 'limite'"),
     offset: int = Query(0, ge=0, description="Número de eventos a saltar para paginación"),
@@ -506,10 +507,11 @@ async def get_eventos(
         clauses.append("mode = %(modo)s")
         params["modo"] = modo_val.strip().lower()
 
-    # Filtro por Región de la instancia API (si está configurada)
-    if API_REGION in ("AMERICA", "AMERICAS"):
+    # Filtro por Región: toma el query param 'region' si viene o la variable de entorno API_REGION
+    target_region = (region.strip().upper() if region else API_REGION)
+    if target_region in ("AMERICA", "AMERICAS"):
         clauses.append("country_id IN (SELECT code FROM paises WHERE continent IN ('North America', 'South America'))")
-    elif API_REGION in ("EUROPA_RESTO", "EUROPE_REST"):
+    elif target_region in ("EUROPA_RESTO", "EUROPE_REST"):
         clauses.append("(country_id IS NULL OR country_id IN (SELECT code FROM paises WHERE continent NOT IN ('North America', 'South America')))")
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
@@ -655,6 +657,7 @@ async def get_estadisticas(
     country_id: Optional[str] = Query(None, description="Alias para 'pais'"),
     modo: Optional[str] = Query(None, description="Modo operativo: 'live' o 'replay'"),
     mode: Optional[str] = Query(None, description="Alias para 'modo'"),
+    region: Optional[str] = Query(None, description="Filtro regional opcional: 'AMERICA', 'EUROPA_RESTO' o 'GLOBAL'"),
     conn: psycopg.AsyncConnection = Depends(get_db),
 ) -> EstadisticasResponse:
     # Resolución de alias
@@ -699,10 +702,11 @@ async def get_estadisticas(
         clauses.append("mode = %(modo)s")
         params["modo"] = modo_val.strip().lower()
 
-    # Filtro por Región de la instancia API (si está configurada)
-    if API_REGION in ("AMERICA", "AMERICAS"):
+    # Filtro por Región: toma el query param 'region' si viene o la variable de entorno API_REGION
+    target_region = (region.strip().upper() if region else API_REGION)
+    if target_region in ("AMERICA", "AMERICAS"):
         clauses.append("country_id IN (SELECT code FROM paises WHERE continent IN ('North America', 'South America'))")
-    elif API_REGION in ("EUROPA_RESTO", "EUROPE_REST"):
+    elif target_region in ("EUROPA_RESTO", "EUROPE_REST"):
         clauses.append("(country_id IS NULL OR country_id IN (SELECT code FROM paises WHERE continent NOT IN ('North America', 'South America')))")
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""

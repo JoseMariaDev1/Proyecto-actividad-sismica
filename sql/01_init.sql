@@ -234,16 +234,39 @@ CREATE OR REPLACE FUNCTION fn_ingestar_evento(
 RETURNS VARCHAR AS $$
 DECLARE
     v_actual_updated TIMESTAMPTZ;
+    v_duplicate_id   VARCHAR;
     v_next_version   INTEGER;
     v_resultado      VARCHAR;
 BEGIN
-    -- 1. Comprobar si el evento ya existe en la tabla principal
+    -- 1. Comprobar si el evento ya existe en la tabla principal por ID
     SELECT updated INTO v_actual_updated
     FROM eventos
     WHERE id = p_id;
 
     IF NOT FOUND THEN
-        -- Caso A: Evento nuevo -> Inserción directa
+        -- 2. Deduplicación Espaciotemporal Multi-Fuente (Cross-API Deduplication):
+        -- Si dos APIs diferentes (ej. USGS y EMSC) reportan el mismo terremoto físico,
+        -- tendrán IDs distintos pero ocurrirán con una diferencia temporal <= 45 segundos
+        -- y a una distancia geográfica <= 0.5 grados (~50 km).
+        SELECT id INTO v_duplicate_id
+        FROM eventos
+        WHERE ABS(EXTRACT(EPOCH FROM (time - p_time))) <= 45
+          AND ABS(latitude - p_latitude) <= 0.5
+          AND ABS(longitude - p_longitude) <= 0.5
+        LIMIT 1;
+
+        IF v_duplicate_id IS NOT NULL THEN
+            -- Se trata del mismo sismo físico ya registrado por la otra agencia:
+            -- Registramos la versión para auditoría pero no duplicamos el punto en el mapa.
+            INSERT INTO eventos_versiones (id_evento, updated, version_num, snapshot_json, recorded_at)
+            VALUES (v_duplicate_id, p_updated, 999, p_snapshot, NOW())
+            ON CONFLICT (id_evento, updated) DO NOTHING;
+
+            v_resultado := 'IGNORED_SPATIOTEMPORAL_DUPLICATE';
+            RETURN v_resultado;
+        END IF;
+
+        -- Caso A: Evento nuevo genuino -> Inserción directa
         INSERT INTO eventos (
             id, time, updated, ingested_at, mag, mag_type, place,
             longitude, latitude, depth, country_code, status,

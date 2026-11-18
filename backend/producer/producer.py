@@ -209,6 +209,82 @@ class USGSProducer:
         return None
 
     # -------------------------------------------------------------------------
+    # EXTRACCIÓN EUROPEA (EMSC - European-Mediterranean Seismological Centre)
+    # -------------------------------------------------------------------------
+    async def fetch_emsc_feed(self) -> List[Dict[str, Any]]:
+        """
+        Consulta la API oficial europea EMSC (SeismicPortal) para capturar sismos
+        en el continente europeo y cuenca mediterránea.
+        Convierte el esquema de EMSC al GeoJSON compatible con el consumidor.
+        """
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(20.0, connect=10.0),
+                headers={"User-Agent": "ObservatorioSismico/1.0 (Python/httpx)"},
+            )
+
+        # Coordenadas geográficas de Europa y Mediterráneo (lat 30 a 72, lon -25 a 45)
+        url = "https://www.seismicportal.eu/fdsnws/event/1/query?format=json&minlat=30&maxlat=72&minlon=-25&maxlon=45&limit=150"
+        try:
+            response = await self._http_client.get(url)
+            if response.status_code != 200:
+                logger.warning(f"EMSC respondió HTTP {response.status_code}")
+                return []
+            
+            raw_data = response.json()
+            features = raw_data.get("features", [])
+            logger.info(f"EMSC: {len(features)} sismos europeos recibidos de SeismicPortal.")
+            
+            normalized_features: List[Dict[str, Any]] = []
+            for f in features:
+                props = f.get("properties", {})
+                geom = f.get("geometry", {})
+                coords = geom.get("coordinates", [])
+                if len(coords) < 2:
+                    continue
+
+                raw_id = str(f.get("id", ""))
+                event_id = f"emsc_{raw_id}"
+
+                # Parsear fecha ISO a epoch milisegundos
+                time_iso = props.get("time")
+                epoch_ms = 0
+                if time_iso:
+                    try:
+                        # Limpiar microsegundos si exceden 6 dígitos
+                        clean_time = time_iso.replace("Z", "+00:00")
+                        dt = datetime.fromisoformat(clean_time)
+                        epoch_ms = int(dt.timestamp() * 1000)
+                    except Exception:
+                        epoch_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+
+                # Profundidad (en EMSC a veces viene negativa en km)
+                depth_val = abs(float(coords[2])) if len(coords) > 2 and coords[2] is not None else 10.0
+
+                normalized_features.append({
+                    "type": "Feature",
+                    "id": event_id,
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [float(coords[0]), float(coords[1]), depth_val]
+                    },
+                    "properties": {
+                        "type": "earthquake",
+                        "mag": float(props["mag"]) if props.get("mag") is not None else None,
+                        "magType": str(props.get("magtype", "ml")),
+                        "place": props.get("flynn_region", "Europa"),
+                        "time": epoch_ms,
+                        "updated": epoch_ms,
+                        "source": "emsc_europe"
+                    }
+                })
+            return normalized_features
+
+        except Exception as err:
+            logger.warning(f"No se pudo consultar el feed de EMSC Europa: {err}")
+            return []
+
+    # -------------------------------------------------------------------------
     # VALIDACIÓN, FILTRADO Y DETECCIÓN DE NOVEDADES
     # -------------------------------------------------------------------------
     @staticmethod
@@ -272,11 +348,20 @@ class USGSProducer:
         }
 
         feed_data = await self.fetch_feed_with_retry()
-        if not feed_data or "features" not in feed_data:
+        features: List[Dict[str, Any]] = feed_data.get("features", []) if feed_data else []
+
+        # Ingesta complementaria europea (EMSC)
+        try:
+            emsc_features = await self.fetch_emsc_feed()
+            if emsc_features:
+                features.extend(emsc_features)
+        except Exception as e:
+            logger.warning(f"Error al integrar sismos de EMSC: {e}")
+
+        if not features:
             logger.info("Ciclo de sondeo finalizado sin datos que procesar.")
             return stats
 
-        features: List[Dict[str, Any]] = feed_data.get("features", [])
         stats["total_recibidos"] = len(features)
 
         # Procesar los eventos en orden cronológico (los más antiguos primero en este feed)

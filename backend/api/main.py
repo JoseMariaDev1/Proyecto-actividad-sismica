@@ -358,6 +358,28 @@ async def get_db(request: Request) -> AsyncGenerator[psycopg.AsyncConnection, No
 
 
 # ==============================================================================
+# Endpoint Raíz: GET /
+# ==============================================================================
+
+@app.get(
+    "/",
+    summary="Punto de entrada de la API",
+    tags=["Monitorización"],
+    include_in_schema=False,
+)
+async def get_root() -> Dict[str, str]:
+    return {
+        "servicio": "Observatorio de Actividad Sísmica - API REST",
+        "estado": "operativo",
+        "documentacion": "/docs",
+        "salud": "/api/salud",
+        "eventos": "/api/eventos",
+        "estadisticas": "/api/estadisticas",
+        "frontend": "http://localhost:4200"
+    }
+
+
+# ==============================================================================
 # Endpoint 1: GET /api/salud
 # ==============================================================================
 

@@ -161,8 +161,8 @@ def build_demo_suite() -> list[dict]:
     ]
     return events
 
-async def run_replay(speed_delay_seconds: float = 0.5):
-    logger.info("Iniciando productor de reproducción histórica...")
+async def run_replay(speed_delay_seconds: float = 0.05, num_historical: int = 250):
+    logger.info(f"Iniciando productor de reproducción histórica (límite histórico: {num_historical} eventos)...")
     # Si se ejecuta desde el host (fuera de Docker), conectarse al listener externo PLAINTEXT_HOST en localhost:29092
     bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092")
     if bootstrap_servers in ("kafka:9092", "localhost:9092"):
@@ -179,15 +179,15 @@ async def run_replay(speed_delay_seconds: float = 0.5):
 
     events = build_demo_suite()
 
-    # Si hay eventos históricos descargados, agregar una muestra cronológica
+    # Si hay eventos históricos descargados, agregar una muestra cronológica representativa
     target_file = HISTORICAL_FILE if os.path.exists(HISTORICAL_FILE) else (HISTORICAL_SAMPLE if os.path.exists(HISTORICAL_SAMPLE) else None)
     if target_file:
         try:
             with open(target_file, "r", encoding="utf-8") as f:
                 hist_data = json.load(f)
                 hist_features = hist_data.get("features", [])
-                logger.info(f"Cargando muestra de 15 eventos de {target_file}...")
-                events.extend(hist_features[:15])
+                logger.info(f"Cargando muestra de {num_historical} eventos de {target_file}...")
+                events.extend(hist_features[:num_historical])
         except Exception as e:
             logger.warning(f"No se pudo cargar muestra de archivo histórico: {e}")
 
@@ -217,5 +217,6 @@ async def run_replay(speed_delay_seconds: float = 0.5):
         logger.info("Productor de reproducción detenido.")
 
 if __name__ == "__main__":
-    delay = float(sys.argv[1]) if len(sys.argv) > 1 else 0.5
-    asyncio.run(run_replay(delay))
+    delay = float(sys.argv[1]) if len(sys.argv) > 1 else 0.05
+    num = int(sys.argv[2]) if len(sys.argv) > 2 else 250
+    asyncio.run(run_replay(delay, num))

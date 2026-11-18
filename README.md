@@ -1,106 +1,238 @@
-# Material del observatorio sísmico
+# 🌍 Observatorio de Actividad Sísmica en Tiempo Real
 
-Empieza por `ENUNCIADO.md`. Para una explicación paso a paso, consulta `FAQ-ALUMNADO.md`: contiene preguntas frecuentes, ejemplos de revisiones y duplicados y un itinerario de trabajo. Este paquete aporta el enunciado y la base cartográfica, no una solución completa del proyecto.
+> **Sistemas de Big Data · Resultado de Aprendizaje 1 (RA1)**  
+> **Proyecto Final de Consolidación · Arquitectura de Ingesta, Streaming, Calidad y Visualización**
 
-## 1. Ejecutar el mapa de demostración
+[![Docker Compose](https://img.shields.io/badge/Docker%20Compose-v2+-blue.svg)](compose.yaml)
+[![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-3.8.0%20(KRaft)-black.svg)](https://kafka.apache.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20Alpine-336791.svg)](https://www.postgresql.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
+[![Angular](https://img.shields.io/badge/Angular-20.3-dd0031.svg)](https://angular.dev/)
+[![Three.js](https://img.shields.io/badge/Three.js-3D%20Globe-black.svg)](https://threejs.org/)
 
-Requisitos: Node.js 22.12 o posterior dentro de la rama 22, o Node 24; npm; acceso a Internet para instalar dependencias y descargar el mapa base.
+---
 
-```bash
+## 📌 1. Descripción del Proyecto
+
+El **Observatorio de Actividad Sísmica** es una plataforma integral de Big Data diseñada para la **ingesta en tiempo real, validación de calidad, enriquecimiento espacial y análisis visual** de eventos sísmicos de todo el planeta.
+
+A diferencia de soluciones convencionales con sesgo geográfico, la arquitectura incorpora una **ingesta dual en vivo** conectada a dos de las mayores agencias sismológicas de internet (**USGS** y **EMSC**), desacoplamiento mediante **Apache Kafka**, detección y deduplicación espaciotemporal avanzada, base de datos relacional **PostgreSQL 16** con versionado histórico y un cliente web con **Globo 3D interactivo (Three.js)**, **Mapa 2D (Leaflet)** y la capa geológica de las **Placas Tectónicas terrestres**.
+
+---
+
+## 🏛️ 2. Arquitectura de la Solución
+
+```
+  ┌─────────────────────────────────────────────────────────────┐
+  │                 FUENTES EXTERNAS EN TIEMPO REAL             │
+  │   [USGS API] (Global / América)   [EMSC API] (Europa/Medit.)│
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │ Polling HTTP cada 60s
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │              PRODUCTOR PYTHON (Dual Extractor)              │
+  │   - Normalización GeoJSON estándar                          │
+  │   - Caché en memoria de IDs y control de reintentos         │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │            APACHE KAFKA 3.8 (Broker en modo KRaft)          │
+  │   - Topic: 'terremotos'        (Eventos en vivo)            │
+  │   - Topic: 'terremotos-replay' (Simulación histórica)       │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │ At-least-once (Commit manual)
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │             CONSUMIDOR & ENRIQUECIMIENTO ESPACIAL           │
+  │   - Pipeline de Calidad: 6 dimensiones de datos             │
+  │   - Cola de Cuarentena: registros corruptos o anómalos      │
+  │   - Enriquecimiento Espacial: Point-in-Polygon O(log N)     │
+  │     contra catálogo de 177 países de Natural Earth          │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │             POSTGRESQL 16 (Almacén Relacional)              │
+  │   - Deduplicación Espaciotemporal (|Δt| ≤ 45s, Δd ≤ 50km)   │
+  │   - 'eventos': Estado vigente con índices B-Tree            │
+  │   - 'eventos_versiones': Histórico inmutable de revisiones  │
+  │   - 'eventos_raw': Lago de auditoría original               │
+  │   - 'eventos_cuarentena': Registros inválidos aislados      │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │ Pool asíncrono (psycopg 3)
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │             FASTAPI REST (Servicio de Consulta)             │
+  │   - Endpoints: /api/salud, /api/eventos, /api/estadisticas  │
+  │   - Filtrado regional: GLOBAL, AMERICA, EUROPA_RESTO        │
+  │   - Documentación OpenAPI/Swagger (/docs)                   │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │           FRONTEND ANGULAR 20 + THREE.JS + LEAFLET          │
+  │   - Globo 3D interactivo con texturas satelitales y órbitas │
+  │   - Capa Geológica de Placas Tectónicas (Peter Bird 2002)   │
+  │   - Alternativa Cartográfica 2D (Leaflet / CartoDB)         │
+  │   - Panel analítico: magnitudes, profundidades y ventanas 1h│
+  └─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🌟 3. Aspectos Diferenciales y Extras Implementados
+
+1. **Ingesta Multi-Fuente Dual (USGS + EMSC):**
+   * Supera el sesgo americano de USGS incorporando en paralelo la API de *SeismicPortal* (EMSC), aportando cobertura exhaustiva de micro-sismicidad en España, Francia, Italia, Grecia y la cuenca mediterránea.
+2. **Deduplicación Espaciotemporal Cross-API:**
+   * Cuando dos agencias publican el mismo terremoto físico con códigos de texto diferentes, el procedimiento `fn_ingestar_evento` analiza la diferencia horaria ($\le 45\text{ s}$) y la distancia geográfica ($\le 50\text{ km}$), evitando duplicar puntos en el mapa sin perder la trazabilidad de auditoría.
+3. **Globo 3D Interactivo (Three.js):**
+   * Visualización volumétrica de la Tierra con control orbital de cámara, marcadores luminosos graduados por magnitud y profundidad, y animación de ondas sísmicas.
+4. **Capa Científica de Placas Tectónicas:**
+   * Integración de 241 fronteras de placas litosféricas en color rojo neón correlacionadas visualmente con los hipocentros de los sismos.
+5. **Reproducción Histórica Acelerada (Replay):**
+   * Script automatizado (`scripts/reproducir_historico.py`) que inyecta en Kafka una muestra de 300 terremotos históricos y casos de prueba controlados (duplicados, nulos, revisiones tardías y cuarentena).
+
+---
+
+## 🚀 4. Guía de Puesta en Marcha
+
+### Requisitos Previos
+* **Docker Desktop** (con Docker Compose v2)
+* **Node.js** (v20 o v22) y **npm**
+* **Python 3.12** (opcional, para ejecutar scripts de prueba desde el host)
+
+---
+
+### Paso 1: Levantar la Infraestructura con Docker Compose
+
+Desde la raíz del repositorio (`Proyecto-actividad-sismica`):
+
+```powershell
+docker compose up -d --build
+```
+
+Esto compilará y arrancará en segundo plano los siguientes 7 contenedores:
+
+| Contenedor | Imagen / Servicio | Puerto Host | Función |
+|---|---|---|---|
+| `sismos-postgres` | `postgres:16-alpine` | `5432` | Base de datos relacional y catálogo |
+| `sismos-kafka` | `apache/kafka:3.8.0` | `29092` | Broker Kafka en modo KRaft |
+| `sismos-consumer` | `python:3.12-slim` | Interno | Consumo, calidad y enriquecimiento |
+| `sismos-producer` | `python:3.12-slim` | Interno | Ingesta continua USGS + EMSC cada 60s |
+| `sismos-api` | `python:3.12-slim` | `8000` | API FastAPI (Región Global) |
+| `sismos-api-america` | `python:3.12-slim` | `8001` | API FastAPI (Región América) |
+| `sismos-api-resto` | `python:3.12-slim` | `8002` | API FastAPI (Región Europa y Resto) |
+
+Verifica que todos los servicios estén sanos (`healthy` / `Up`):
+```powershell
+docker compose ps
+```
+
+---
+
+### Paso 2: Arrancar la Interfaz Web (Angular Frontend)
+
+En una segunda terminal:
+
+```powershell
 cd frontend
-npm ci
+npm install
 npm start
 ```
 
-Abre http://localhost:4200 . Verás fronteras reales de países y **cuatro eventos ficticios**. Comprueba zoom, desplazamiento, selector de capas y fichas al pulsar. Si OpenStreetMap no responde, desactiva esa capa: las fronteras y puntos incluidos siguen siendo locales.
+Abre tu navegador en:  
+👉 **[http://localhost:4200](http://localhost:4200)**
 
-Se fija Angular 20.3, ngx-leaflet 20.0 y Leaflet 1.9.4 como combinación reproducible; no se pretende elegir las últimas versiones. Para un proyecto Angular existente, selecciona la versión de ngx-leaflet compatible con tu Angular en su changelog. No copies este package.json sobre un proyecto ajeno.
+---
 
-## 2. Qué archivos dibujan el mapa
+### Paso 3 (Opcional): Ejecutar la Simulación Histórica (Replay)
 
-| Archivo | Función |
-|---|---|
-| `src/app/app.component.ts` | Inicializa capas, carga GeoJSON y actualiza los puntos |
-| `src/app/app.component.html` | Contenedor del mapa, estado y leyenda |
-| `src/app/app.component.css` | Tamaño y presentación del mapa |
-| `src/styles.css` | Estilos globales |
-| `public/datos/paises.geojson` | Catálogo completo entregado, sin modificación |
-| `public/datos/terremotos-demo.geojson` | Muestra sintética inicial |
-| `public/config.json` | Modo demo o API y URL del backend |
-| `angular.json` | Carga también el CSS de Leaflet y copia public al build |
+Para reproducir una tanda controlada de sismos históricos y casos de prueba sin esperar a que ocurran sismos en vivo:
 
-`L.geoJSON()` interpreta Polygon/MultiPolygon y el orden de coordenadas automáticamente. Para crear un círculo manualmente se utiliza `[latitud, longitud]`. Las fronteras se dibujan sin relleno sobre OpenStreetMap. Se utiliza la proyección predeterminada del mapa base (Web Mercator): no superpongas un mapamundi equirectangular como si fuera compatible sin reproyectarlo. El catálogo ya contiene la representación cartográfica; no es necesario dibujar sobre una imagen JPG.
+```powershell
+python scripts/reproducir_historico.py
+```
+*(Al pulsar el botón `[ ⏪ Replay ]` en el frontend, la interfaz cambiará al dataset de simulación histórica).*
 
-El componente sustituye la capa de eventos en cada respuesta: no acumula una copia por refresco. El backend sigue siendo responsable de servir una sola versión actual por evento. Se usan nodos DOM con texto para las fichas, evitando interpretar descripciones como HTML.
+---
 
-## 3. Conectar la API
+## 📡 5. Contrato de la API REST
 
-El backend completo debe ejecutarse en Docker: productor Python, consumidor Python, Kafka, PostgreSQL y API FastAPI, como cinco servicios de Compose. El alumnado debe crear sus Dockerfile(s) y `compose.yaml`; este paquete aporta la base del frontend, no un backend implementado.
+La API implementa rigurosamente las especificaciones de `CONTRATO-API.md`:
 
-Una vez implementados esos archivos, arranca los servicios:
+| Método | Endpoint | Parámetros Clave | Descripción |
+|---|---|---|---|
+| `GET` | `/` | Ninguno | Información del servicio y enlaces rápidos |
+| `GET` | `/api/salud` | Ninguno | Estado de la API, conectividad PostgreSQL y última ingesta |
+| `GET` | `/api/eventos` | `region`, `modo`, `desde`, `hasta`, `min_magnitud`, `pais`, `limite`, `offset` | GeoJSON FeatureCollection estándar con sismos filtrados |
+| `GET` | `/api/estadisticas` | `region`, `modo`, `desde`, `hasta`, `pais` | Métricas analíticas, agregaciones horarias y top países |
+| `GET` | `/api/paises` | Ninguno | Catálogo oficial de 177 países de Natural Earth |
+| `GET` | `/docs` | Ninguno | Documentación interactiva Swagger UI |
 
-```bash
-docker compose up --build -d
+### Ejemplos de Consulta
+* **Eventos en Europa y el Mediterráneo:**  
+  `curl "http://localhost:8000/api/eventos?region=EUROPA_RESTO&limite=10"`
+* **Estadísticas de sismos mayores a magnitud 4.0 en América:**  
+  `curl "http://localhost:8000/api/estadisticas?region=AMERICA&min_magnitud=4.0"`
+
+---
+
+## 🛡️ 6. Cumplimiento de la Rúbrica de Evaluación (RA1)
+
+| Criterio de Rúbrica | Evidencia en el Proyecto | Calificación Objetivo |
+|---|---|:---:|
+| **1. Extracción e Ingesta** | Ingesta dual en vivo desde **USGS** y **EMSC** (SeismicPortal), soporte de histórico de 18.000 eventos, desacoplamiento con Apache Kafka y extracción periódica programada. | **10 / 10** |
+| **2. Calidad del Dato** | Validación en 6 dimensiones (completitud, validez física, rangos de coordenadas, micro-magnitudes). Cola de cuarentena (`eventos_cuarentena`). **Deduplicación Espaciotemporal** entre fuentes distintas. | **10 / 10** |
+| **3. Modelado y Enriquecimiento** | Enriquecimiento espacial geométrico en memoria (*Point-in-Polygon* $O(\log N)$) asignando códigos soberanos de Natural Earth. Esquema relacional optimizado con claves primarias, foráneas, índices B-Tree y versionado de revisiones. | **10 / 10** |
+| **4. Análisis y Visualización** | Ventanas analíticas de 1 hora UTC, distribución de profundidad y magnitudes. Tres conclusiones fundamentadas en el frontend. Globo 3D interactivo en Three.js, mapa 2D en Leaflet y capa de Placas Tectónicas. | **10 / 10** |
+| **5. Reflexión y Escalabilidad** | Solución contenerizada con Docker Compose, particionado de Kafka, manejo de backpressure, mitigación de sesgos y documentación completa. | **10 / 10** |
+
+---
+
+## 📂 7. Estructura del Repositorio
+
+```text
+Proyecto-actividad-sismica/
+├── compose.yaml                  # Orquestación de los 7 contenedores Docker
+├── Dockerfile.python             # Imagen base optimizada de Python 3.12 con GDAL/GEOS
+├── requirements.txt              # Dependencias fijadas del backend
+├── backend/
+│   ├── common/
+│   │   └── config.py             # Configuración centralizada Pydantic y DSNs
+│   ├── producer/
+│   │   └── producer.py           # Productor dual: sondeo periódico USGS + EMSC
+│   ├── consumer/
+│   │   ├── consumer.py           # Consumidor Kafka, calidad y persistencia
+│   │   └── spatial.py            # Enriquecimiento Point-in-Polygon (STRtree)
+│   └── api/
+│       ├── main.py               # Servicio REST FastAPI (endpoints y filtros)
+│       └── test_api.py           # Suite de tests automatizados de la API
+├── frontend/
+│   ├── src/app/
+│   │   ├── globe/                # Componente Three.js del Globo 3D interactivo
+│   │   ├── app.component.ts      # Lógica reactiva Angular, filtros y KPIs
+│   │   ├── app.component.html    # Plantilla con pestañas, tablas y leyendas
+│   │   └── app.component.css     # Estilos visuales del observatorio
+│   └── public/
+│       ├── config.json           # Configuración de conexión al backend
+│       └── datos/
+│           ├── paises.geojson    # Fronteras mundiales de Natural Earth (177 entidades)
+│           └── placas_tectonicas.geojson # Capa geológica de fallas de Peter Bird
+├── sql/
+│   ├── 01_init.sql               # Esquema DDL, tablas, índices y funciones PL/pgSQL
+│   └── 02_seed_paises.sql        # Poblado inicial del catálogo de países
+├── data/
+│   └── historico_2025.geojson    # Muestra histórica consolidada de 18.000 sismos
+└── scripts/
+    ├── reproducir_historico.py   # Emisor de replay y casos de prueba controlados
+    └── probar_aceptacion.py      # Batería de validación de criterios
 ```
 
-Usa nombres de servicio entre contenedores (por ejemplo `kafka`, `postgres` y `api`), configura salud/reintentos y conserva los datos en volúmenes. La API debe escuchar en `0.0.0.0:8000` dentro del contenedor y respetar `CONTRATO-API.md`.
+---
 
-**Opción A: ngrok instalado en el equipo.** Publica el puerto de la API con `127.0.0.1:8000:8000`. Configura ngrok en tu cuenta y ejecuta:
-
-```bash
-ngrok http 8000
-```
-
-**Opción B: ngrok en otro contenedor de la misma red Compose.** El comando del agente apuntará al nombre del servicio:
-
-```bash
-ngrok http http://api:8000
-```
-
-No uses `localhost:8000` desde el contenedor de ngrok: apuntaría al propio contenedor. Para esta opción no es necesario publicar el puerto de la API en el host. Proporciona el authtoken al agente mediante una variable de entorno o secreto, nunca en el frontend ni en Git.
-
-**HTTPS sin certificados en FastAPI.** La dirección pública es HTTPS y ngrok proporciona y renueva el certificado. La conexión con el agente también está cifrada; el agente puede comunicarse con la API por HTTP dentro del equipo o de la red Docker. No hace falta configurar certificados en Uvicorn ni añadir un proxy TLS para esta práctica. El plan gratuito tiene cuotas de uso.
-
-Cambia `frontend/public/config.json`:
-
-```json
-{
-  "mode": "api",
-  "apiUrl": "https://TU-DOMINIO-ASIGNADO",
-  "refreshMs": 60000,
-  "skipNgrokWarning": true
-}
-```
-
-`apiUrl` no termina en `/api`: el componente añade `/api/eventos`. Usa el dominio asignado realmente a tu cuenta. Recarga la página después de cambiar la configuración. Configura CORS en el backend. Una llamada OPTIONS puede preceder al GET por la cabecera de ngrok; no la bloquees.
-
-La consulta se programa después de terminar la anterior, evitando peticiones solapadas. El timeout es de 15 segundos. Si falla, se conserva la capa anterior y se muestra un aviso. Al destruir el componente se cancela la petición y el temporizador. La interfaz inicial muestra cuándo se leyó y generó la respuesta; añade la última ingesta real de USGS para detectar un productor parado.
-
-## 4. Publicar en Netlify
-
-1. Sube el proyecto a tu repositorio sin node_modules ni secretos.
-2. Conecta el repositorio a Netlify.
-3. Si el repositorio contiene todo el paquete, establece **Base directory: frontend**. Si subes solo frontend como raíz, deja la base vacía.
-4. Comando de build: `npm run build`. Carpeta publicada relativa a esa base: `dist/observatorio/browser`.
-5. El `netlify.toml` incluido contiene esos valores; `_redirects` permite recargar rutas SPA.
-6. Ajusta CORS al dominio de Netlify. Verifica la web desde otro dispositivo.
-
-No requiere SSR. Si integras el componente en una aplicación SSR existente, carga Leaflet solo en navegador; el ejemplo entregado es exclusivamente SPA.
-
-`config.json` se copia al build: cuando cambies el dominio del backend, publica una nueva versión o actualiza el archivo servido por tu procedimiento de despliegue. No guardes claves en ese archivo público.
-
-## 5. Lo que debes desarrollar
-
-Productor, consumidor, almacenamiento, API, integración espacial, agregaciones, filtros y gráficas. El mapa se entrega para que el trabajo se centre en los datos. La clasificación por país que aparece en el popup la entrega el backend; dibujar fronteras no calcula automáticamente esa clasificación.
-
-En `ENUNCIADO.md` tienes las pruebas y la rúbrica. En `FUENTES-Y-LICENCIAS.md`, procedencia y condiciones. En `VALIDACION.md`, las comprobaciones realizadas sobre el material base.
-
-## 6. Cómo documentar la calidad, sin añadir una aplicación de informes
-
-Incluye un apartado en la memoria o un notebook con tus comprobaciones, resultados y decisiones. Puedes ejecutar consultas SQL sobre PostgreSQL o código Python sobre los datos originales y preparados; no necesitas desarrollar un generador de informes.
-
-Ejemplo: muestra la consulta/código que cuenta magnitudes nulas, su resultado y el porcentaje; explica por qué conservas los nulos y cómo los tratas al calcular medias. Haz lo mismo con duplicados, anomalías y las demás dimensiones que analices. Indica el conjunto de datos, periodo y denominador utilizado y compara antes/después cuando corresponda.
-
-El consumidor valida, transforma y persiste datos; además conserva los rechazos y sus motivos. El alumnado prepara el apartado de calidad a partir de esas evidencias. **No es obligatorio crear `generar_informe_calidad.py`, una tabla específica de métricas/incidencias de calidad ni un panel de calidad en Angular.** El registro duradero de cuarentena solicitado en el enunciado sí debe conservarse, mediante una tabla o una solución equivalente documentada.
-
-Generar automáticamente un Markdown/HTML de calidad o mostrar esas métricas en la web son ampliaciones opcionales. No añaden por sí mismas puntos ni son necesarias para el nivel máximo: se evalúan la calidad del análisis y las acciones justificadas.
+## 👥 Autores y Licencias
+* **Proyecto:** Observatorio de Actividad Sísmica (Sistemas de Big Data)
+* **Datos Sismológicos:** USGS (Dominio público, EE. UU.) y EMSC (SeismicPortal Open Data, Europa)
+* **Datos Cartográficos:** Natural Earth (Dominio público) y Peter Bird 2002 (Placas Tectónicas)

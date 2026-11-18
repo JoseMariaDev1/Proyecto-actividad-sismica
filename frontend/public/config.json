@@ -1,6 +1,6 @@
 {
   "mode": "api",
-  "apiUrl": "https://deftly-footing-study.ngrok-free.dev",
+  "apiUrl": "http://localhost:8000",
   "refreshMs": 60000,
-  "skipNgrokWarning": true
+  "skipNgrokWarning": false
 }
